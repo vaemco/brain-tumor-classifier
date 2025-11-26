@@ -1,0 +1,117 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb_checkpoints/
+
+# Environment
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.conda/
+
+# PyTorch
+*.pth
+*.pt
+*.onnx
+# Keep only the final model
+!models/brain_tumor_resnet18_final.pt
+
+# Data - DO NOT COMMIT
+data/
+Data/
+dataset/
+datasets/
+*.csv
+*.tsv
+# Keep README in data folder if it exists
+!data/README.md
+
+# Training outputs
+runs/
+lightning_logs/
+wandb/
+mlruns/
+# Keep metrics.json for reference
+!runs/metrics.json
+!runs/training_history.png
+
+# Uploads and temporary files
+website/static/uploads/*
+!website/static/uploads/.gitkeep
+*.tmp
+*.temp
+*.log
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# Sensitive information
+*.key
+*.pem
+*.env
+secrets/
+credentials/
+config.local.yml
+
+# Large files
+*.zip
+*.tar.gz
+*.rar
+*.7z
+*.bin
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Documentation build
+docs/_build/
+docs/_static/
+docs/_templates/
+
+# Backup files
+*.bak
+*.backup

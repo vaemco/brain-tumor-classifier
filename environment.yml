@@ -1,0 +1,51 @@
+name: data_brain
+channels:
+  - conda-forge
+  - pytorch
+  - defaults
+dependencies:
+  # Core Python
+  - python=3.10
+  
+  # Deep Learning
+  - pytorch
+  - torchvision
+  - torchaudio
+  - cpuonly  # Remove this line if you want GPU support
+  
+  # Data Science & ML
+  - numpy
+  - pandas
+  - scikit-learn
+  - matplotlib
+  - seaborn
+  
+  # Image Processing
+  - pillow
+  - opencv
+  
+  # Jupyter
+  - jupyter
+  - notebook
+  - ipykernel
+  - ipywidgets
+  
+  # Visualization
+  - plotly
+  
+  # Web App
+  - flask
+  - flask-cors
+  
+  # Utilities
+  - tqdm
+  - pyyaml
+  
+  # GUI (tkinter is usually included with Python)
+  - tk
+  
+  # pip packages
+  - pip
+  - pip:
+    - tensorboard
+    - grad-cam
