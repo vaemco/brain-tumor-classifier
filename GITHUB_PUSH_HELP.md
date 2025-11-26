@@ -20,15 +20,15 @@ Nach dem Erstellen zeigt GitHub dir diese Befehle an. **ABER** du hast bereits e
 
 ```bash
 # Ersetze USERNAME mit deinem GitHub Username!
-git remote add origin https://github.com/USERNAME/brain-tumor-classifier.git
+git remote add origin https://github.com/your-username/brain-tumor-classifier.git
 
 # Verify
 git remote -v
 ```
 
-**Beispiel**: Wenn dein Username `valentinemser` ist:
+**Beispiel**: Wenn dein Username `your-username` ist:
 ```bash
-git remote add origin https://github.com/valentinemser/brain-tumor-classifier.git
+git remote add origin https://github.com/your-username/brain-tumor-classifier.git
 ```
 
 ## 3. CSS Änderungen hinzufügen & Pushen

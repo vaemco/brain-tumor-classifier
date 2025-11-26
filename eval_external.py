@@ -12,13 +12,15 @@ import shutil
 from pathlib import Path
 
 # Configuration
-MODEL_PATH = "models/brain_tumor_resnet18_v2.pt"
-if not os.path.exists(MODEL_PATH):
+BASE_DIR = Path(__file__).resolve().parent
+DATA_DIR = BASE_DIR / "data" / "Brain_Tumor_Dataset" / "external_dataset" / "training"
+MODEL_PATH = BASE_DIR / "models" / "brain_tumor_resnet18_v2.pt"
+if not MODEL_PATH.exists():
     print(f"Model {MODEL_PATH} not found, falling back to v1")
-    MODEL_PATH = "models/brain_tumor_resnet18_final.pt"
+    MODEL_PATH = BASE_DIR / "models" / "brain_tumor_resnet18_final.pt"
 
-DATA_DIR = "/Users/valentinemser/dev_projects/03_data_projects/data_brain_tumor/data/Brain_Tumor_Dataset/external_dataset/training"
 MISCLASSIFIED_DIR = Path("misclassified")
+BATCH_SIZE = 32
 
 # Device
 if torch.backends.mps.is_available():

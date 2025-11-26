@@ -1,5 +1,4 @@
 """
-Brain Tumor Classification Web App"""
 Flask Backend for Brain Tumor Classifier
 ========================================
 
@@ -59,12 +58,6 @@ FEEDBACK_FILE = FEEDBACK_DIR / 'feedback_labels.csv'
 if not FEEDBACK_FILE.exists():
     with open(FEEDBACK_FILE, 'w') as f:
         f.write("filename,predicted_label,true_label,confidence,timestamp,model_version\n")
-
-# Test data directories
-TEST_DIRS = [
-    Path('/Users/valentinemser/dev_projects/03_data_projects/data_brain_tumor/data/Brain_Tumor_Dataset/external_dataset/testing'),
-    Path('/Users/valentinemser/dev_projects/03_data_projects/data_brain_tumor/data/Brain_Tumor_Dataset/Testing')
-]
 
 # Device setup - M2 optimized
 if torch.backends.mps.is_available():

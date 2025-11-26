@@ -25,8 +25,13 @@ else:
 print(f"PyTorch version: {torch.__version__}")
 
 # Data Paths
-data_dir = "/Users/valentinemser/dev_projects/03_data_projects/data_brain_tumor/data/Brain_Tumor_Dataset/Training"
-external_data_dir = "/Users/valentinemser/dev_projects/03_data_projects/data_brain_tumor/data/Brain_Tumor_Dataset/external_dataset/training"
+    # Define paths relative to the script
+base_dir = Path(__file__).resolve().parent
+data_dir = base_dir / "data" / "Brain_Tumor_Dataset" / "Training"
+external_data_dir = base_dir / "data" / "Brain_Tumor_Dataset" / "external_dataset" / "training"
+
+print(f"Main Data Dir: {data_dir}")
+print(f"External Data Dir: {external_data_dir}")
 
 # Custom Noise Transform
 class AddGaussianNoise(object):

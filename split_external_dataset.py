@@ -1,17 +1,6 @@
 import os
 import random
 import shutil
-
-SOURCE_DIR = "/Users/valentinemser/dev_projects/03_data_projects/data_brain_tumor/data/Brain_Tumor_Dataset/external_data"
-TARGET_DIR = "/Users/valentinemser/dev_projects/03_data_projects/data_brain_tumor/data/Brain_Tumor_Dataset/external_dataset"
-
-TRAIN_RATIO = 0.8  # 80% train / 20% test
-SEED = 42
-
-random.seed(SEED)
-
-classes = ["glioma", "meningioma", "notumor", "pituitary"]
-
 for split in ["training", "testing"]:
     for cls in classes:
         os.makedirs(os.path.join(TARGET_DIR, split, cls), exist_ok=True)

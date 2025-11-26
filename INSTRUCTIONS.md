@@ -11,7 +11,7 @@ Follow these steps to train the new model, start the web server, and test the ap
     ```
 3.  Navigate to the project directory:
     ```bash
-    cd /Users/valentinemser/dev_projects/03_data_projects/data_brain_tumor
+    cd /path/to/your/project/data_brain_tumor
     ```
 4.  Launch Jupyter Notebook:
     ```bash
@@ -25,13 +25,27 @@ Follow these steps to train the new model, start the web server, and test the ap
 ## 2. Start the Web Server
 
 1.  Open a **new** Terminal window (or use the existing one if you stopped Jupyter).
-2.  Activate the environment:
     ```bash
-    conda activate data_brain
+    cd /path/to/your/project/data_brain_tumor
     ```
-3.  Navigate to the project directory:
+
+2.  **Install Dependencies**:
     ```bash
-    cd /Users/valentinemser/dev_projects/03_data_projects/data_brain_tumor
+    pip install -r requirements.txt
+    ```
+
+3.  **Run the App**:
+    ```bash
+    python3 -m website.app
+    ```
+
+## Training (Optional)
+
+To retrain the model:
+
+1.  **Navigate to project root**:
+    ```bash
+    cd /path/to/your/project/data_brain_tumor
     ```
 4.  Start the Flask app:
     ```bash
