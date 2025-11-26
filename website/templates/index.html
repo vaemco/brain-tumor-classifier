@@ -1,5 +1,22 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="en" data-theme="light">
+<!-- 
+    Brain Tumor Classifier - Main Interface
+    =======================================
+    
+    Structure:
+    - Sidebar: Navigation and global controls (Dark Mode, Report).
+    - Main Content:
+        - View: Analyze (Upload, Results, Visualization)
+        - View: History (List of past analyses)
+        - View: 3D Viewer (Simulated slice viewer)
+        - View: Settings (Active Learning simulation)
+    
+    How to Modify:
+    - Add New Tab: Create a new `<div id="view-newname" class="view-section">` and add a button in the sidebar.
+    - Change Layout: The grid structure is defined in `.compact-grid` (CSS).
+    - Libraries: Chart.js is loaded via CDN at the bottom of the body.
+-->
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">

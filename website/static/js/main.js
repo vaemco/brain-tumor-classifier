@@ -496,6 +496,32 @@ document.addEventListener('DOMContentLoaded', () => {
     updateThemeIcon(savedTheme);
 });
 
+/**
+ * Main Frontend Logic
+ * ===================
+ * 
+ * This file handles all user interactions and API communication.
+ * 
+ * Key Features:
+ * - Image Upload & Drag-and-Drop
+ * - API Calls to /api/predict and /api/train
+ * - Visualization (Pie Chart, Probability Bars, Heatmap Overlay)
+ * - Advanced UI (Dark Mode, Zoom/Pan, History, 3D Viewer Simulation)
+ * 
+ * How to Modify:
+ * - Change API Endpoint: Look for `fetch('/api/predict', ...)` to change where images are sent.
+ * - Adjust Thresholds: The uncertainty threshold is set at `0.60` (60%). Search for `uncertaintyAlert` to change it.
+ * - Add New Views: Add a new `switchView` case or navigation button logic.
+ * - 3D Viewer: The `drawSlice` function currently simulates a brain. Replace this with a real DICOM loader (e.g., using cornerstone.js) for real 3D data.
+ */
+
+// Configuration
+const API_ENDPOINT = '/api/predict';
+const FEEDBACK_ENDPOINT = '/api/feedback';
+const CLASSES = ['Glioma', 'Meningioma', 'No Tumor', 'Pituitary'];
+
+// State Variables
+
 // 3D Viewer Logic (Simulation)
 const sliceCanvas = document.getElementById('sliceCanvas');
 const sliceSlider = document.getElementById('sliceSlider');

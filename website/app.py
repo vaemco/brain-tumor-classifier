@@ -1,6 +1,21 @@
 """
-Brain Tumor Classification Web App
-Flask Backend with Grad-CAM visualization
+Brain Tumor Classification Web App"""
+Flask Backend for Brain Tumor Classifier
+========================================
+
+This file serves as the main backend entry point. It handles:
+1.  Loading the PyTorch model (ResNet18).
+2.  Processing uploaded images (preprocessing, normalization).
+3.  Generating predictions and Grad-CAM heatmaps.
+4.  Simulating advanced features (Multi-Model Consensus, Similar Cases, Active Learning).
+
+How to Modify:
+--------------
+- Change Model: Update `MODEL_PATH` and the `load_model` function if you switch architectures (e.g., to EfficientNet).
+- Add Classes: Update the `CLASSES` list if your model predicts different tumor types.
+- API Endpoints: Add new `@app.route` functions to create new API capabilities.
+- Simulations: The `consensus` and `similar_cases` logic in `/api/predict` is currently simulated.
+  Replace these sections with real model inference or database lookups for production use.
 """
 from flask import Flask, render_template, request, jsonify, send_from_directory
 import flask

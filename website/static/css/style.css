@@ -1,4 +1,16 @@
-/* Medical Brain Tumor Classifier Styles */
+/* 
+ * Medical Brain Tumor Classifier Styles 
+ * =====================================
+ * 
+ * This file defines the visual appearance of the application.
+ * It uses CSS Variables (Custom Properties) for easy theming.
+ * 
+ * How to Modify:
+ * - Change Colors: Edit the `:root` variables (e.g., --primary, --bg) to change the global color scheme.
+ * - Dark Mode: Edit the `[data-theme="dark"]` block to adjust the dark mode appearance.
+ * - Layout: The app uses Flexbox (`.app-layout`) and Grid (`.compact-grid`) for structure.
+ * - Components: Individual components (Cards, Buttons, Inputs) are styled in their respective sections.
+ */
 
 :root {
     /* Medical Palette */
