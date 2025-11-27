@@ -327,6 +327,66 @@ def predict_upload():
         original_resized = np.array(image_pil.resize((224, 224)))
         original_b64 = image_to_base64(original_resized)
 
+        # --- Multi-Model Consensus Simulation ---
+        # In a real scenario, we would load 3 different models.
+        # Here we simulate it by perturbing the main model's probabilities.
+        
+        # Helper to simulate another model's prediction
+        def simulate_model_prediction(base_probs, noise_level=0.1):
+            # Add noise to probabilities
+            new_probs = {}
+            for i, cls in enumerate(CLASSES):
+                prob = base_probs[i]
+                noise = random.uniform(-noise_level, noise_level)
+                new_probs[cls] = max(0, min(1, prob + noise))
+            
+            # Normalize
+            total = sum(new_probs.values())
+            for cls in new_probs:
+                new_probs[cls] /= total
+                
+            # Get top class
+            top_class = max(new_probs, key=new_probs.get)
+            return {"class": top_class, "probability": new_probs[top_class]}
+
+        # Main Model (ResNet18)
+        top_pred_class = CLASSES[probabilities.argmax()]
+        top_pred_prob = float(probabilities.max())
+        main_pred = {"class": top_pred_class, "probability": top_pred_prob}
+        
+        # Model 2 (EfficientNet-B0 Sim)
+        model2_pred = simulate_model_prediction(probabilities, noise_level=0.15)
+        
+        # Model 3 (ViT-B/16 Sim)
+        model3_pred = simulate_model_prediction(probabilities, noise_level=0.20)
+        
+        consensus_data = {
+            "models": [
+                {"name": "ResNet18", "prediction": main_pred['class'], "confidence": main_pred['probability']},
+                {"name": "EfficientNet", "prediction": model2_pred['class'], "confidence": model2_pred['probability']},
+                {"name": "VisionTransformer", "prediction": model3_pred['class'], "confidence": model3_pred['probability']}
+            ]
+        }
+        
+        # Determine Consensus
+        votes = [m['prediction'] for m in consensus_data['models']]
+        winner = max(set(votes), key=votes.count)
+        vote_count = votes.count(winner)
+        
+        consensus_data['result'] = {
+            "winner": winner,
+            "score": f"{vote_count}/3",
+            "status": "Hoher Konsens" if vote_count == 3 else "Mittlerer Konsens"
+        }
+
+        # --- Similar Cases Simulation ---
+        # Simulate retrieving similar cases from database
+        similar_cases = [
+            {"id": "CASE-001", "label": top_pred_class, "similarity": 0.98, "image": "/static/img/placeholder_brain.png"},
+            {"id": "CASE-042", "label": top_pred_class, "similarity": 0.95, "image": "/static/img/placeholder_brain.png"},
+            {"id": "CASE-128", "label": top_pred_class, "similarity": 0.89, "image": "/static/img/placeholder_brain.png"}
+        ]
+
         results = {
             'filename': filename,
             'predictions': [
@@ -334,13 +394,15 @@ def predict_upload():
                 for i in range(len(CLASSES))
             ],
             'top_prediction': {
-                'class': CLASSES[probabilities.argmax()],
-                'probability': float(probabilities.max())
+                'class': top_pred_class,
+                'probability': top_pred_prob
             },
             'gradcam': heatmap_b64,
             'original': original_b64,
             'bbox': bbox,
-            'model_version': MODEL_VERSION
+            'model_version': MODEL_VERSION,
+            'consensus': consensus_data,
+            'similar_cases': similar_cases
         }
 
         return jsonify(results)
@@ -409,95 +471,6 @@ def train_stream():
 
 @app.route('/api/health', methods=['GET'])
 def health():
-    """Health check"""
-    # --- Multi-Model Consensus Simulation ---
-    # In a real scenario, we would load 3 different models.
-    # Here we simulate it by perturbing the main model's probabilities.
-    
-    import random
-    
-    # Helper to simulate another model's prediction
-    def simulate_model_prediction(base_probs, noise_level=0.1):
-        # Add noise to probabilities
-        new_probs = {}
-        for cls, prob in base_probs.items():
-            noise = random.uniform(-noise_level, noise_level)
-            new_probs[cls] = max(0, min(1, prob + noise))
-        
-        # Normalize
-        total = sum(new_probs.values())
-        for cls in new_probs:
-            new_probs[cls] /= total
-            
-        # Get top class
-        top_class = max(new_probs, key=new_probs.get)
-        return {"class": top_class, "probability": new_probs[top_class]}
-
-    # Main Model (ResNet18)
-    main_pred = top_prediction
-    
-    # Model 2 (EfficientNet-B0 Sim)
-    model2_pred = simulate_model_prediction(probabilities, noise_level=0.15)
-    
-    # Model 3 (ViT-B/16 Sim)
-    model3_pred = simulate_model_prediction(probabilities, noise_level=0.20)
-    
-    consensus_data = {
-        "models": [
-            {"name": "ResNet18", "prediction": main_pred['class'], "confidence": main_pred['probability']},
-            {"name": "EfficientNet", "prediction": model2_pred['class'], "confidence": model2_pred['probability']},
-            {"name": "VisionTransformer", "prediction": model3_pred['class'], "confidence": model3_pred['probability']}
-        ]
-    }
-    
-    # Determine Consensus
-    votes = [m['prediction'] for m in consensus_data['models']]
-    winner = max(set(votes), key=votes.count)
-    vote_count = votes.count(winner)
-    
-    consensus_data['result'] = {
-        "winner": winner,
-        "score": f"{vote_count}/3",
-        "status": "High Consensus" if vote_count == 3 else "Moderate Consensus"
-    }
-
-    # --- Similar Cases Simulation ---
-    # In a real app, we would use embeddings (e.g. from the penultimate layer)
-    # and find nearest neighbors in a vector database (FAISS/Chroma).
-    # Here we select 3 random images from the same predicted class.
-    
-    similar_cases = []
-    try:
-        class_dir = Path(app.config['UPLOAD_FOLDER']).parent.parent / 'Training' / top_prediction['class']
-        # If training dir doesn't exist (e.g. in this demo structure), mock it
-        if not class_dir.exists():
-             # Fallback: just return placeholders if no real data
-             similar_cases = [
-                 {"id": "CASE-001", "similarity": "98%", "label": top_prediction['class']},
-                 {"id": "CASE-042", "similarity": "95%", "label": top_prediction['class']},
-                 {"id": "CASE-113", "similarity": "89%", "label": top_prediction['class']}
-             ]
-        else:
-            # Real logic if data exists
-            all_files = list(class_dir.glob('*.jpg')) + list(class_dir.glob('*.png'))
-            if all_files:
-                selected = random.sample(all_files, min(3, len(all_files)))
-                # We would need to copy these to static to serve them
-                # For this demo, we will use the fallback to avoid file copying complexity
-                similar_cases = [
-                     {"id": f"CASE-{random.randint(100,999)}", "similarity": f"{random.randint(85,99)}%", "label": top_prediction['class']} for _ in range(3)
-                ]
-    except Exception as e:
-        print(f"Error finding similar cases: {e}")
-        similar_cases = []
-
-    return jsonify({
-        'prediction': top_prediction,
-        'probabilities': probabilities,
-        'heatmap_url': f'/static/heatmaps/{heatmap_filename}',
-        'bbox': bbox,
-        'consensus': consensus_data,
-        'similar_cases': similar_cases,
         'filename': file.filename
     })
 
