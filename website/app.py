@@ -471,8 +471,8 @@ def train_stream():
 
 @app.route('/api/health', methods=['GET'])
 def health():
-        'filename': file.filename
-    })
+    """Health check"""
+    return jsonify({'status': 'ok', 'model': MODEL_VERSION})
 
 
 if __name__ == '__main__':
