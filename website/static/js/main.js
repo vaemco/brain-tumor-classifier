@@ -169,6 +169,13 @@ async function handleFile(file) {
 }
 
 // Display prediction results with progressive animation
+// --- Display Results ---
+// This function updates the UI with the prediction data received from the backend.
+// It handles:
+// 1. Showing the prediction text and probability.
+// 2. Rendering the Pie Chart and Bar Charts (using Chart.js).
+// 3. Updating the MRI image and Heatmap overlay.
+// 4. Triggering the "Uncertainty Alert" if confidence is low.
 function displayResults(data) {
     currentPredictionData = data;
     const { predictions, top_prediction, gradcam, original, filename, model_version, bbox } = data;

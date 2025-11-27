@@ -1,3 +1,20 @@
+"""
+Data Preparation Script
+=======================
+
+This script splits a raw dataset into Training and Testing sets.
+It is useful when you download a dataset that isn't already split.
+
+Logic:
+1.  Reads images from `SOURCE_DIR`.
+2.  Shuffles them randomly (seeded for reproducibility).
+3.  Splits them based on `TRAIN_RATIO` (default 80% train, 20% test).
+4.  Copies files into `TARGET_DIR/training` and `TARGET_DIR/testing`.
+
+How to Modify:
+- Ratio: Change `TRAIN_RATIO` to 0.7 or 0.9 to adjust the split.
+- Paths: Update `SOURCE_DIR` if your raw data is elsewhere.
+"""
 import os
 import random
 import shutil

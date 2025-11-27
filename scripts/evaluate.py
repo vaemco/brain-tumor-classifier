@@ -1,3 +1,20 @@
+"""
+Evaluation Script
+=================
+
+This script evaluates the trained model on an external test dataset.
+It calculates accuracy, generates a confusion matrix, and saves misclassified images for analysis.
+
+Key Features:
+- Accuracy & Classification Report: Precision, Recall, F1-Score per class.
+- Confusion Matrix: Visualizes where the model makes mistakes (e.g., confusing Glioma with Meningioma).
+- Misclassified Analysis: Saves images that were predicted incorrectly into a `misclassified/` folder,
+  organized by `TrueLabel_as_PredictedLabel`. This is crucial for debugging model errors.
+
+How to Modify:
+- Dataset: Change `DATA_DIR` to point to a different test set.
+- Model: Change `MODEL_PATH` to evaluate a different checkpoint.
+"""
 
 import os
 import torch

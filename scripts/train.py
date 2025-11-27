@@ -1,4 +1,23 @@
 
+"""
+Training Script for Brain Tumor Classifier (ResNet18)
+=====================================================
+
+This script handles the training of the PyTorch model.
+It uses Transfer Learning with a pre-trained ResNet18 architecture.
+
+Key Features:
+- Data Augmentation: Random rotations, flips, blur, and noise to prevent overfitting.
+- Transfer Learning: Freezes early layers and only trains the later layers (Fine-Tuning).
+- Early Stopping: Stops training if validation loss doesn't improve for `patience` epochs.
+- Metrics: Saves loss and accuracy history to `runs/metrics_v2.json`.
+
+How to Modify:
+- Hyperparameters: Adjust `epochs`, `batch_size` (in DataLoader), or `lr` (learning rate) in the Optimizer section.
+- Model: Change `models.resnet18` to another architecture (e.g., `models.efficientnet_b0`) if needed.
+- Augmentation: Modify `train_tf` to add/remove transformations.
+"""
+
 import os
 import json
 import numpy as np
@@ -9,9 +28,11 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader, random_split, ConcatDataset
 from torchvision import datasets, transforms, models
 from copy import deepcopy
+from pathlib import Path
 import matplotlib.pyplot as plt
 
-# M2 MacBook: Use MPS if available, else CPU
+# --- Device Configuration ---
+# Automatically detects MPS (Mac), CUDA (NVIDIA), or CPU.
 if torch.backends.mps.is_available():
     device = torch.device("mps")
     print("Using device: MPS (Apple Silicon GPU)")
@@ -45,26 +66,30 @@ class AddGaussianNoise(object):
     def __repr__(self):
         return self.__class__.__name__ + '(mean={0}, std={1})'.format(self.mean, self.std)
 
-# Enhanced Transforms for Training (Realism Simulation)
+# --- Data Augmentation (Crucial for Generalization) ---
+# These transformations are applied to every training image on the fly.
+# They help the model learn to recognize tumors even if the image is rotated, blurry, or has different lighting.
 train_tf = transforms.Compose([
-    transforms.Grayscale(num_output_channels=3),
+    transforms.Grayscale(num_output_channels=3), # Ensure 3 channels even if input is B&W
     transforms.Resize(256),
-    transforms.RandomResizedCrop(224, scale=(0.8, 1.0), ratio=(0.90, 1.10)),
-    transforms.RandomHorizontalFlip(p=0.5),
-    # Rotation & Affine
+    transforms.RandomResizedCrop(224, scale=(0.8, 1.0), ratio=(0.90, 1.10)), # Zoom in/out slightly
+    transforms.RandomHorizontalFlip(p=0.5), # Mirror image
+    # Rotation & Affine: Simulates imperfect patient positioning
     transforms.RandomRotation(30),
     transforms.RandomAffine(degrees=0, translate=(0.1, 0.1), scale=(0.9, 1.1), shear=10),
-    # Blur
+    # Blur: Simulates motion or lower quality scans
     transforms.RandomApply([transforms.GaussianBlur(kernel_size=3)], p=0.2),
-    # Color/Contrast Jitter
+    # Color/Contrast Jitter: Simulates different scanner settings
     transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.1, hue=0.05),
     transforms.ToTensor(),
-    # Noise
+    # Noise: Simulates sensor noise (grain)
     transforms.RandomApply([AddGaussianNoise(0., 0.05)], p=0.2),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406],
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], # ImageNet standards
                          std=[0.229, 0.224, 0.225]),
 ])
 
+# Validation transforms: No augmentation, just resizing and normalization.
+# We want to evaluate on clean, standard images.
 val_tf = transforms.Compose([
     transforms.Grayscale(num_output_channels=3),
     transforms.Resize(256),
