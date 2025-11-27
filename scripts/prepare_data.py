@@ -1,6 +1,15 @@
 import os
 import random
 import shutil
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+SOURCE_DIR = BASE_DIR / "data" / "Brain_Tumor_Dataset" / "external_data"
+TARGET_DIR = BASE_DIR / "data" / "Brain_Tumor_Dataset" / "external_dataset"
+
+TRAIN_RATIO = 0.8
+classes = ["glioma", "meningioma", "notumor", "pituitary"]
+
 for split in ["training", "testing"]:
     for cls in classes:
         os.makedirs(os.path.join(TARGET_DIR, split, cls), exist_ok=True)

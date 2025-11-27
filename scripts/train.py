@@ -26,7 +26,7 @@ print(f"PyTorch version: {torch.__version__}")
 
 # Data Paths
     # Define paths relative to the script
-base_dir = Path(__file__).resolve().parent
+base_dir = Path(__file__).resolve().parent.parent
 data_dir = base_dir / "data" / "Brain_Tumor_Dataset" / "Training"
 external_data_dir = base_dir / "data" / "Brain_Tumor_Dataset" / "external_dataset" / "training"
 
@@ -182,8 +182,8 @@ best_val = float("inf")
 bad = 0
 history = {"train_loss":[], "val_loss":[], "train_acc":[], "val_acc":[]}
 
-output_dir = "runs"
-model_dir = "models"
+output_dir = base_dir / "runs"
+model_dir = base_dir / "models"
 os.makedirs(output_dir, exist_ok=True)
 os.makedirs(model_dir, exist_ok=True)
 

@@ -12,14 +12,14 @@ import shutil
 from pathlib import Path
 
 # Configuration
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data" / "Brain_Tumor_Dataset" / "external_dataset" / "training"
 MODEL_PATH = BASE_DIR / "models" / "brain_tumor_resnet18_v2.pt"
 if not MODEL_PATH.exists():
     print(f"Model {MODEL_PATH} not found, falling back to v1")
     MODEL_PATH = BASE_DIR / "models" / "brain_tumor_resnet18_final.pt"
 
-MISCLASSIFIED_DIR = Path("misclassified")
+MISCLASSIFIED_DIR = BASE_DIR / "misclassified"
 BATCH_SIZE = 32
 
 # Device

@@ -51,34 +51,58 @@ This project demonstrates how modern deep learning can assist in medical image c
 - **Format**: JPEG/PNG images
 - **Split**: 80% Training / 20% Validation
 
-**Note**: The dataset is not included in this repository due to size constraints. Download it from Kaggle and place it in the `data/` directory following the structure in the setup instructions.
+**Note**: The dataset is## 📂 Project Structure
 
-## 🚀 Quick Start
-
-### Prerequisites
-```bash
-- Python 3.10+
-- Conda or Mamba
-- 8GB+ RAM (16GB recommended for training)
-- M2 Mac (or CUDA GPU) recommended for faster training
+```
+brain-tumor-classifier/
+├── data/                   # Dataset (Training/Testing)
+├── models/                 # Saved PyTorch models
+├── notebooks/              # Jupyter Notebooks for experiments
+├── scripts/                # Utility scripts (Train, Eval, Data Prep)
+│   ├── train.py            # Training script
+│   ├── evaluate.py         # Evaluation script
+│   └── prepare_data.py     # Data split script
+├── website/                # Flask Web Application
+│   ├── static/             # CSS, JS, Images
+│   ├── templates/          # HTML Templates
+│   └── app.py              # Main App Entry Point
+├── environment.yml         # Conda Environment
+└── README.md               # Project Documentation
 ```
 
-### Installation
+## 🚀 Getting Started
 
-1. **Clone the repository**
+### 1. Installation
+
 ```bash
-git clone https://github.com/yourusername/brain-tumor-classifier.git
+# Clone the repo
+git clone https://github.com/your-username/brain-tumor-classifier.git
 cd brain-tumor-classifier
+
+# Create Conda Environment
+conda env create -f environment.yml
+conda activate data_brain
 ```
 
-2. **Create environment**
+### 2. Run the Web App
+
 ```bash
-mamba env create -f environment.yml
-mamba activate data_brain
+python3 -m website.app
 ```
 
-3. **Download the dataset**
-- Visit [Kaggle Dataset](https://www.kaggle.com/datasets/masoudnickparvar/brain-tumor-mri-dataset)
+Visit `http://localhost:3000` in your browser.
+
+### 3. Training & Evaluation
+
+Scripts are located in the `scripts/` folder:
+
+```bash
+# Train the model
+python3 scripts/train.py
+
+# Evaluate on external data
+python3 scripts/evaluate.py
+```
 - Download and extract to `data/Brain_Tumor_Dataset/`
 
 4. **Train the model** (optional - pretrained weights available)
