@@ -65,41 +65,10 @@ if not FEEDBACK_FILE.exists():
 # Data directories for "Similar Cases" or testing
 # (Adjust these paths to match your local structure)
 BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIRS = [
+TEST_DIRS = [
     BASE_DIR / 'data' / 'Brain_Tumor_Dataset' / 'external_dataset' / 'testing',
     BASE_DIR / 'data' / 'Brain_Tumor_Dataset' / 'Testing'
 ]
-
-@app.route('/api/random-test', methods=['GET'])
-def get_random_test_image():
-    """Get a random image from the test set"""
-    try:
-        all_images = []
-        for d in DATA_DIRS:
-            if d.exists():
-                all_images.extend(list(d.glob('**/*.jpg')))
-                all_images.extend(list(d.glob('**/*.png')))
-                all_images.extend(list(d.glob('**/*.jpeg')))
-        
-        if not all_images:
-            return jsonify({'error': 'No test images found'}), 404
-            
-        selected = random.choice(all_images)
-        
-        # Copy to static/uploads to serve it
-        dest_name = f"test_{selected.name}"
-        dest_path = app.config['UPLOAD_FOLDER'] / dest_name
-        import shutil
-        shutil.copy(selected, dest_path)
-        
-        return jsonify({
-            'url': f'/static/uploads/{dest_name}',
-            'filename': dest_name,
-            'true_label': selected.parent.name
-        })
-    except Exception as e:
-        print(f"Error serving random test image: {e}")
-        return jsonify({'error': str(e)}), 500
 
 # Device setup - M2 optimized
 if torch.backends.mps.is_available():
