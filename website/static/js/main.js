@@ -1,20 +1,20 @@
 // Brain Tumor Classifier - Frontend Logic
 
-const dropzone = document.getElementById('dropzone');
-const fileInput = document.getElementById('fileInput');
-const results = document.getElementById('results');
-const loading = document.getElementById('loading');
-const error = document.getElementById('error');
-const randomTestBtn = document.getElementById('randomTestBtn');
-const reloadRandomBtn = document.getElementById('reloadRandomBtn');
+const dropzone = document.getElementById("dropzone");
+const fileInput = document.getElementById("fileInput");
+const results = document.getElementById("results");
+const loading = document.getElementById("loading");
+const error = document.getElementById("error");
+const randomTestBtn = document.getElementById("randomTestBtn");
+const reloadRandomBtn = document.getElementById("reloadRandomBtn");
 
 // Feedback elements
-const feedbackButtons = document.getElementById('feedbackButtons');
-const correctionSection = document.getElementById('correctionSection');
-const feedbackThankYou = document.getElementById('feedbackThankYou');
-const correctionSelect = document.getElementById('correctionSelect');
-const autoAcceptTimer = document.getElementById('autoAcceptTimer');
-const timerSeconds = document.getElementById('timerSeconds');
+const feedbackButtons = document.getElementById("feedbackButtons");
+const correctionSection = document.getElementById("correctionSection");
+const feedbackThankYou = document.getElementById("feedbackThankYou");
+const correctionSelect = document.getElementById("correctionSelect");
+const autoAcceptTimer = document.getElementById("autoAcceptTimer");
+const timerSeconds = document.getElementById("timerSeconds");
 
 let pieChart = null;
 let currentPredictionData = null;
@@ -23,149 +23,182 @@ let autoAcceptTimeoutId = null;
 
 // Zoom/Pan State
 let zoomState = {
-    scale: 1,
-    panning: false,
-    pointX: 0,
-    pointY: 0,
-    startX: 0,
-    startY: 0
+  scale: 1,
+  panning: false,
+  pointX: 0,
+  pointY: 0,
+  startX: 0,
+  startY: 0,
 };
 
 // Stats Logic
 let stats = {
-    correct: 0,
-    total: 0
+  correct: 0,
+  total: 0,
 };
 
 // History Logic
 let historyData = [];
+let useLocalStorage = true;
 
-// Load data from localStorage
-if (localStorage.getItem('brainTumorStats')) {
-    stats = JSON.parse(localStorage.getItem('brainTumorStats'));
+// Test localStorage availability and load data
+try {
+  if (localStorage.getItem("brainTumorStats")) {
+    stats = JSON.parse(localStorage.getItem("brainTumorStats"));
     updateStatsDisplay();
-}
+  }
 
-if (localStorage.getItem('brainTumorHistory')) {
-    historyData = JSON.parse(localStorage.getItem('brainTumorHistory'));
+  if (localStorage.getItem("brainTumorHistory")) {
+    historyData = JSON.parse(localStorage.getItem("brainTumorHistory"));
     updateHistoryUI();
+  }
+} catch (err) {
+  console.warn("localStorage not available, using sessionStorage:", err);
+  useLocalStorage = false;
+  // Try sessionStorage as fallback
+  try {
+    if (sessionStorage.getItem("brainTumorStats")) {
+      stats = JSON.parse(sessionStorage.getItem("brainTumorStats"));
+      updateStatsDisplay();
+    }
+    if (sessionStorage.getItem("brainTumorHistory")) {
+      historyData = JSON.parse(sessionStorage.getItem("brainTumorHistory"));
+      updateHistoryUI();
+    }
+  } catch (sessionErr) {
+    console.warn(
+      "sessionStorage also not available, data will not be saved:",
+      sessionErr
+    );
+  }
 }
 
 function updateStats(isCorrect) {
-    stats.total++;
-    if (isCorrect) {
-        stats.correct++;
+  stats.total++;
+  if (isCorrect) {
+    stats.correct++;
+  }
+
+  // Save to localStorage with error handling
+  try {
+    if (useLocalStorage) {
+      localStorage.setItem("brainTumorStats", JSON.stringify(stats));
+    } else {
+      sessionStorage.setItem("brainTumorStats", JSON.stringify(stats));
     }
-    
-    // Save to localStorage
-    localStorage.setItem('brainTumorStats', JSON.stringify(stats));
-    updateStatsDisplay();
+  } catch (err) {
+    console.error("Error saving stats:", err);
+  }
+  updateStatsDisplay();
 }
 
 function updateStatsDisplay() {
-    const accuracy = stats.total === 0 ? 0 : Math.round((stats.correct / stats.total) * 100);
-    document.getElementById('accuracyDisplay').textContent = `${accuracy}%`;
-    document.getElementById('countDisplay').textContent = `${stats.correct} / ${stats.total}`;
-    
-    // Update sidebar stats too
-    const sidebarStats = document.getElementById('accuracyDisplaySidebar');
-    if (sidebarStats) {
-        sidebarStats.textContent = `${accuracy}%`;
-    }
+  const accuracy =
+    stats.total === 0 ? 0 : Math.round((stats.correct / stats.total) * 100);
+  document.getElementById("accuracyDisplay").textContent = `${accuracy}%`;
+  document.getElementById(
+    "countDisplay"
+  ).textContent = `${stats.correct} / ${stats.total}`;
+
+  // Update sidebar stats too
+  const sidebarStats = document.getElementById("accuracyDisplaySidebar");
+  if (sidebarStats) {
+    sidebarStats.textContent = `${accuracy}%`;
+  }
 }
 
 // Dropzone handlers
-dropzone.addEventListener('click', () => fileInput.click());
-dropzone.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    dropzone.classList.add('dragover');
+dropzone.addEventListener("click", () => fileInput.click());
+dropzone.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  dropzone.classList.add("dragover");
 });
-dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
-dropzone.addEventListener('drop', (e) => {
-    e.preventDefault();
-    dropzone.classList.remove('dragover');
-    const files = e.dataTransfer.files;
-    if (files.length > 0) handleFile(files[0]);
+dropzone.addEventListener("dragleave", () =>
+  dropzone.classList.remove("dragover")
+);
+dropzone.addEventListener("drop", (e) => {
+  e.preventDefault();
+  dropzone.classList.remove("dragover");
+  const files = e.dataTransfer.files;
+  if (files.length > 0) handleFile(files[0]);
 });
 
-fileInput.addEventListener('change', (e) => {
-    if (e.target.files.length > 0) handleFile(e.target.files[0]);
+fileInput.addEventListener("change", (e) => {
+  if (e.target.files.length > 0) handleFile(e.target.files[0]);
 });
 
 // Random Test Button (both buttons use same function)
 async function loadRandomTest() {
-    // Hide previous results and errors
-    results.style.display = 'none';
-    error.style.display = 'none';
-    loading.style.display = 'block';
-    resetFeedbackUI();
-    cancelAutoAccept();
+  // Hide previous results and errors
+  results.style.display = "none";
+  error.style.display = "none";
+  loading.style.display = "block";
+  resetFeedbackUI();
+  cancelAutoAccept();
 
-    try {
-        const response = await fetch('/api/random-test');
-        
-        if (!response.ok) {
-            throw new Error('Failed to fetch random test image');
-        }
+  try {
+    const response = await fetch("/api/random-test");
 
-        const data = await response.json();
-        displayResults(data);
-
-    } catch (err) {
-        showError('Fehler beim Laden des Testbildes: ' + err.message);
-    } finally {
-        loading.style.display = 'none';
+    if (!response.ok) {
+      throw new Error("Failed to fetch random test image");
     }
+
+    const data = await response.json();
+    displayResults(data);
+  } catch (err) {
+    showError("Error loading test image: " + err.message);
+  } finally {
+    loading.style.display = "none";
+  }
 }
 
-randomTestBtn.addEventListener('click', loadRandomTest);
+randomTestBtn.addEventListener("click", loadRandomTest);
 if (reloadRandomBtn) {
-    reloadRandomBtn.addEventListener('click', loadRandomTest);
+  reloadRandomBtn.addEventListener("click", loadRandomTest);
 }
 
 // Handle file upload and prediction
 async function handleFile(file) {
-    // Validate file
-    if (!file.type.startsWith('image/')) {
-        showError('Bitte wähle ein Bild aus (PNG, JPG)');
-        return;
+  // Validate file
+  if (!file.type.startsWith("image/")) {
+    showError("Please select an image (PNG, JPG)");
+    return;
+  }
+
+  if (file.size > 16 * 1024 * 1024) {
+    showError("File too large (max 16MB)");
+    return;
+  }
+
+  // Hide previous results and errors
+  results.style.display = "none";
+  error.style.display = "none";
+  loading.style.display = "block";
+  resetFeedbackUI();
+  cancelAutoAccept();
+
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const response = await fetch("/api/predict", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error("Prediction failed");
     }
 
-    if (file.size > 16 * 1024 * 1024) {
-        showError('Datei zu groß (max 16MB)');
-        return;
-    }
-
-    // Hide previous results and errors
-    results.style.display = 'none';
-    error.style.display = 'none';
-    loading.style.display = 'block';
-    resetFeedbackUI();
-    cancelAutoAccept();
-
-    try {
-        const formData = new FormData();
-        formData.append('file', file);
-
-        const response = await fetch('/api/predict', {
-            method: 'POST',
-            body: formData
-        });
-
-        if (!response.ok) {
-            throw new Error('Prediction failed');
-        }
-
-        const data = await response.json();
-        // Add filename if available from file object
-        data.filename = file.name;
-        displayResults(data);
-
-    } catch (err) {
-        showError('Fehler bei der Analyse: ' + err.message);
-    } finally {
-        loading.style.display = 'none';
-    }
+    const data = await response.json();
+    // Add filename if available from file object
+    data.filename = file.name;
+    displayResults(data);
+  } catch (err) {
+    showError("Error during analysis: " + err.message);
+  } finally {
+    loading.style.display = "none";
+  }
 }
 
 // Display prediction results with progressive animation
@@ -177,100 +210,119 @@ async function handleFile(file) {
 // 3. Updating the MRI image and Heatmap overlay.
 // 4. Triggering the "Uncertainty Alert" if confidence is low.
 function displayResults(data) {
-    currentPredictionData = data;
-    const { predictions, top_prediction, gradcam, original, filename, model_version, bbox } = data;
+  currentPredictionData = data;
+  const {
+    predictions,
+    top_prediction,
+    gradcam,
+    original,
+    filename,
+    model_version,
+    bbox,
+  } = data;
 
-    // Top prediction
-    const predictionHTML = `
+  // Top prediction
+  const predictionHTML = `
         <div class="prediction-class">${top_prediction.class}</div>
-        <div class="prediction-probability">${(top_prediction.probability * 100).toFixed(1)}%</div>
+        <div class="prediction-probability">${(
+          top_prediction.probability * 100
+        ).toFixed(1)}%</div>
     `;
-    document.getElementById('predictionResult').innerHTML = predictionHTML;
+  document.getElementById("predictionResult").innerHTML = predictionHTML;
 
-    // Filename and Model Version
-    if (filename) {
-        document.getElementById('filenameDisplay').textContent = filename;
-    } else {
-        document.getElementById('filenameDisplay').textContent = "Uploaded Image";
+  // Filename and Model Version
+  if (filename) {
+    document.getElementById("filenameDisplay").textContent = filename;
+  } else {
+    document.getElementById("filenameDisplay").textContent = "Uploaded Image";
+  }
+
+  if (model_version) {
+    document.getElementById("modelVersionDisplay").textContent = model_version;
+  }
+
+  // Pie chart
+  createPieChart(predictions);
+
+  // Original image
+  document.getElementById("originalImage").src =
+    "data:image/png;base64," + original;
+
+  // Progressive heatmap loading effect
+  const heatmapImg = document.getElementById("heatmapImage");
+  const analysisOverlay = document.getElementById("analysisProgress");
+
+  // Show analysis overlay
+  heatmapImg.classList.remove("loaded");
+  analysisOverlay.classList.add("active");
+
+  // Simulate progressive analysis (1 second delay for effect)
+  setTimeout(() => {
+    analysisOverlay.classList.remove("active");
+    heatmapImg.src = "data:image/png;base64," + gradcam;
+    heatmapImg.classList.add("loaded");
+
+    // Draw bounding box after heatmap loads
+    if (bbox) {
+      drawBoundingBox(bbox);
     }
-    
-    if (model_version) {
-        document.getElementById('modelVersionDisplay').textContent = model_version;
-    }
+  }, 800);
 
-    // Pie chart
-    createPieChart(predictions);
+  // Probability bars
+  createProbabilityBars(predictions);
 
-    // Original image
-    document.getElementById('originalImage').src = 'data:image/png;base64,' + original;
-    
-    // Progressive heatmap loading effect
-    const heatmapImg = document.getElementById('heatmapImage');
-    const analysisOverlay = document.getElementById('analysisProgress');
-    
-    // Show analysis overlay
-    heatmapImg.classList.remove('loaded');
-    analysisOverlay.classList.add('active');
-    
-    // Simulate progressive analysis (1 second delay for effect)
-    setTimeout(() => {
-        analysisOverlay.classList.remove('active');
-        heatmapImg.src = 'data:image/png;base64,' + gradcam;
-        heatmapImg.classList.add('loaded');
-        
-        // Draw bounding box after heatmap loads
-        if (bbox) {
-            drawBoundingBox(bbox);
-        }
-    }, 800);
+  // Show results
+  results.style.display = "block";
+  results.scrollIntoView({ behavior: "smooth", block: "nearest" });
 
-    // Probability bars
-    createProbabilityBars(predictions);
+  // Start auto-accept countdown
+  startAutoAccept();
 
-    // Show results
-    results.style.display = 'block';
-    results.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    
-    // Start auto-accept countdown
-    startAutoAccept();
+  // Check for uncertainty
+  const uncertaintyAlert = document.getElementById("uncertaintyAlert");
+  if (top_prediction.probability < 0.6) {
+    uncertaintyAlert.style.display = "block";
+  } else {
+    uncertaintyAlert.style.display = "none";
+  }
 
-    // Check for uncertainty
-    const uncertaintyAlert = document.getElementById('uncertaintyAlert');
-    if (top_prediction.probability < 0.60) {
-        uncertaintyAlert.style.display = 'block';
-    } else {
-        uncertaintyAlert.style.display = 'none';
-    }
+  // Render Consensus
+  if (data.consensus) {
+    const card = document.getElementById("consensusCard");
+    const badge = document.getElementById("consensusBadge");
+    const winner = document.getElementById("consensusWinner");
+    const votesContainer = document.getElementById("modelVotes");
 
-    // Render Consensus
-    if (data.consensus) {
-        const card = document.getElementById('consensusCard');
-        const badge = document.getElementById('consensusBadge');
-        const winner = document.getElementById('consensusWinner');
-        const votesContainer = document.getElementById('modelVotes');
-        
-        card.style.display = 'block';
-        badge.textContent = `${data.consensus.result.score} Stimmen`;
-        winner.textContent = data.consensus.result.winner;
-        
-        votesContainer.innerHTML = data.consensus.models.map(m => `
+    card.style.display = "block";
+    badge.textContent = `${data.consensus.result.score} Votes`;
+    winner.textContent = data.consensus.result.winner;
+
+    votesContainer.innerHTML = data.consensus.models
+      .map(
+        (m) => `
             <div class="model-vote">
                 <span class="vote-name">${m.name}</span>
                 <div class="vote-bar-bg">
-                    <div class="vote-bar-fill" style="width: ${m.confidence * 100}%"></div>
+                    <div class="vote-bar-fill" style="width: ${
+                      m.confidence * 100
+                    }%"></div>
                 </div>
                 <span class="vote-val">${m.prediction}</span>
             </div>
-        `).join('');
-    }
+        `
+      )
+      .join("");
+  }
 
-    // Render Similar Cases
-    if (data.similar_cases) {
-        const card = document.getElementById('similarCasesCard');
-        const grid = document.getElementById('similarCasesGrid');
-        
-        card.style.display = 'block';
-        grid.innerHTML = data.similar_cases.map(c => `
+  // Render Similar Cases
+  if (data.similar_cases) {
+    const card = document.getElementById("similarCasesCard");
+    const grid = document.getElementById("similarCasesGrid");
+
+    card.style.display = "block";
+    grid.innerHTML = data.similar_cases
+      .map(
+        (c) => `
             <div class="similar-case-item">
                 <div class="similar-case-placeholder">
                     ${c.id}
@@ -278,44 +330,87 @@ function displayResults(data) {
                 <span class="similar-case-label">${c.label}</span>
                 <span class="similar-case-sim">${c.similarity} Match</span>
             </div>
-        `).join('');
-    }
+        `
+      )
+      .join("");
+  }
 
-    // Save to history
-    addToHistory(data);
+  // Save to history
+  addToHistory(data);
 }
 
 // History Functions
 function addToHistory(data) {
-    // Avoid duplicates if reloading same image
-    if (historyData.length > 0 && historyData[0].filename === data.filename) return;
+  const now = Date.now();
 
-    const historyItem = {
-        id: Date.now(),
-        filename: data.filename || 'Upload',
-        prediction: data.top_prediction.class,
-        probability: data.top_prediction.probability,
-        timestamp: new Date().toISOString(),
-        data: data // Store full data to restore view
-    };
+  // Improved duplicate detection: only skip if same filename AND loaded within 2 seconds
+  if (historyData.length > 0) {
+    const lastItem = historyData[0];
+    const lastTimestamp = new Date(lastItem.timestamp).getTime();
+    const timeDiff = now - lastTimestamp;
 
-    historyData.unshift(historyItem); // Add to top
-    if (historyData.length > 50) historyData.pop(); // Limit to 50
+    // Only skip if same filename and loaded within 2 seconds (likely accidental double-click)
+    if (lastItem.filename === data.filename && timeDiff < 2000) {
+      console.log("Skipping duplicate entry (same file within 2 seconds)");
+      return;
+    }
+  }
 
-    localStorage.setItem('brainTumorHistory', JSON.stringify(historyData));
-    updateHistoryUI();
+  const historyItem = {
+    id: now,
+    filename: data.filename || "Upload",
+    prediction: data.top_prediction.class,
+    probability: data.top_prediction.probability,
+    timestamp: new Date().toISOString(),
+    data: data, // Store full data to restore view
+  };
+
+  historyData.unshift(historyItem); // Add to top
+  if (historyData.length > 50) historyData.pop(); // Limit to 50
+
+  // Save to storage with error handling
+  try {
+    const historyJSON = JSON.stringify(historyData);
+    if (useLocalStorage) {
+      localStorage.setItem("brainTumorHistory", historyJSON);
+    } else {
+      sessionStorage.setItem("brainTumorHistory", historyJSON);
+    }
+    console.log(`History updated: ${historyData.length} items total`);
+  } catch (err) {
+    console.error("Error saving history:", err);
+    // If storage is full, try removing oldest items
+    if (err.name === "QuotaExceededError") {
+      console.warn("Storage quota exceeded, removing old entries...");
+      historyData = historyData.slice(0, 25); // Keep only last 25
+      try {
+        const historyJSON = JSON.stringify(historyData);
+        if (useLocalStorage) {
+          localStorage.setItem("brainTumorHistory", historyJSON);
+        } else {
+          sessionStorage.setItem("brainTumorHistory", historyJSON);
+        }
+      } catch (retryErr) {
+        console.error("Could not save even after reduction:", retryErr);
+      }
+    }
+  }
+  updateHistoryUI();
 }
 
 function updateHistoryUI() {
-    const list = document.getElementById('historyList');
-    if (!list) return;
+  const list = document.getElementById("historyList");
+  if (!list) return;
 
-    if (historyData.length === 0) {
-        list.innerHTML = '<p class="text-muted">Noch keine Analysen in dieser Sitzung.</p>';
-        return;
-    }
+  if (historyData.length === 0) {
+    list.innerHTML =
+      '<p class="text-muted">No analyses in this session yet.</p>';
+    return;
+  }
 
-    list.innerHTML = historyData.map(item => `
+  list.innerHTML = historyData
+    .map(
+      (item) => `
         <div class="history-item" onclick="loadFromHistory(${item.id})">
             <div class="history-info">
                 <strong>${item.filename}</strong>
@@ -325,196 +420,213 @@ function updateHistoryUI() {
                 ${item.prediction} ${(item.probability * 100).toFixed(0)}%
             </div>
         </div>
-    `).join('');
+    `
+    )
+    .join("");
 }
 
 function loadFromHistory(id) {
-    const item = historyData.find(i => i.id === id);
-    if (item) {
-        switchView('analyze');
-        displayResults(item.data);
-    }
+  const item = historyData.find((i) => i.id === id);
+  if (item) {
+    switchView("analyze");
+    displayResults(item.data);
+  }
 }
 
 // Navigation
 function switchView(viewName) {
-    // Hide all views
-    document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
-    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  // Hide all views
+  document
+    .querySelectorAll(".view-section")
+    .forEach((el) => el.classList.remove("active"));
+  document
+    .querySelectorAll(".nav-item")
+    .forEach((el) => el.classList.remove("active"));
 
-    // Show selected
-    document.getElementById(`view-${viewName}`).classList.add('active');
-    
-    // Update nav button
-    const navBtn = document.querySelector(`.nav-item[onclick="switchView('${viewName}')"]`);
-    if (navBtn) navBtn.classList.add('active');
+  // Show selected
+  document.getElementById(`view-${viewName}`).classList.add("active");
+
+  // Update nav button
+  const navBtn = document.querySelector(
+    `.nav-item[onclick="switchView('${viewName}')"]`
+  );
+  if (navBtn) navBtn.classList.add("active");
 }
 
 // Zoom & Pan Logic
-const containerOriginal = document.getElementById('containerOriginal');
-const containerHeatmap = document.getElementById('containerHeatmap');
-const wrapperOriginal = document.getElementById('wrapperOriginal');
-const wrapperHeatmap = document.getElementById('wrapperHeatmap');
+const containerOriginal = document.getElementById("containerOriginal");
+const containerHeatmap = document.getElementById("containerHeatmap");
+const wrapperOriginal = document.getElementById("wrapperOriginal");
+const wrapperHeatmap = document.getElementById("wrapperHeatmap");
 
 function setupZoomPan(container, wrapper) {
-    if (!container || !wrapper) return;
+  if (!container || !wrapper) return;
 
-    container.onwheel = function (e) {
-        e.preventDefault();
-        const xs = (e.offsetX - zoomState.pointX) / zoomState.scale;
-        const ys = (e.offsetY - zoomState.pointY) / zoomState.scale;
-        const delta = -e.deltaY;
-        
-        (delta > 0) ? (zoomState.scale *= 1.2) : (zoomState.scale /= 1.2);
-        
-        // Limit zoom
-        if (zoomState.scale < 1) zoomState.scale = 1;
-        if (zoomState.scale > 5) zoomState.scale = 5;
+  container.onwheel = function (e) {
+    e.preventDefault();
+    const xs = (e.offsetX - zoomState.pointX) / zoomState.scale;
+    const ys = (e.offsetY - zoomState.pointY) / zoomState.scale;
+    const delta = -e.deltaY;
 
-        zoomState.pointX = e.offsetX - xs * zoomState.scale;
-        zoomState.pointY = e.offsetY - ys * zoomState.scale;
+    delta > 0 ? (zoomState.scale *= 1.2) : (zoomState.scale /= 1.2);
 
-        applyTransform();
-    };
+    // Limit zoom
+    if (zoomState.scale < 1) zoomState.scale = 1;
+    if (zoomState.scale > 5) zoomState.scale = 5;
 
-    container.onmousedown = function (e) {
-        e.preventDefault();
-        zoomState.startX = e.clientX - zoomState.pointX;
-        zoomState.startY = e.clientY - zoomState.pointY;
-        zoomState.panning = true;
-    };
+    zoomState.pointX = e.offsetX - xs * zoomState.scale;
+    zoomState.pointY = e.offsetY - ys * zoomState.scale;
 
-    container.onmouseup = function (e) {
-        zoomState.panning = false;
-    };
+    applyTransform();
+  };
 
-    container.onmousemove = function (e) {
-        e.preventDefault();
-        if (!zoomState.panning) return;
-        zoomState.pointX = e.clientX - zoomState.startX;
-        zoomState.pointY = e.clientY - zoomState.startY;
-        applyTransform();
-    };
+  container.onmousedown = function (e) {
+    e.preventDefault();
+    zoomState.startX = e.clientX - zoomState.pointX;
+    zoomState.startY = e.clientY - zoomState.pointY;
+    zoomState.panning = true;
+  };
+
+  container.onmouseup = function (e) {
+    zoomState.panning = false;
+  };
+
+  container.onmousemove = function (e) {
+    e.preventDefault();
+    if (!zoomState.panning) return;
+    zoomState.pointX = e.clientX - zoomState.startX;
+    zoomState.pointY = e.clientY - zoomState.startY;
+    applyTransform();
+  };
 }
 
 function applyTransform() {
-    const transform = `translate(${zoomState.pointX}px, ${zoomState.pointY}px) scale(${zoomState.scale})`;
-    if (wrapperOriginal) wrapperOriginal.style.transform = transform;
-    if (wrapperHeatmap) wrapperHeatmap.style.transform = transform;
+  const transform = `translate(${zoomState.pointX}px, ${zoomState.pointY}px) scale(${zoomState.scale})`;
+  if (wrapperOriginal) wrapperOriginal.style.transform = transform;
+  if (wrapperHeatmap) wrapperHeatmap.style.transform = transform;
 }
 
 function resetZoom() {
-    zoomState = { scale: 1, panning: false, pointX: 0, pointY: 0, startX: 0, startY: 0 };
-    applyTransform();
+  zoomState = {
+    scale: 1,
+    panning: false,
+    pointX: 0,
+    pointY: 0,
+    startX: 0,
+    startY: 0,
+  };
+  applyTransform();
 }
 
 // Initialize Zoom (sync both images)
 // We attach listeners to both, but they share state so they move together
 setupZoomPan(containerOriginal, wrapperOriginal);
-// setupZoomPan(containerHeatmap, wrapperHeatmap); // Only need one controller really if they sync, but let's keep it simple. 
-// Actually, better to control both with one set of events or just let them be independent? 
+// setupZoomPan(containerHeatmap, wrapperHeatmap); // Only need one controller really if they sync, but let's keep it simple.
+// Actually, better to control both with one set of events or just let them be independent?
 // User request: "Zoom & Pan". Usually better if synced.
 // Let's attach events to BOTH containers, but they update the SAME state and apply to BOTH wrappers.
 if (containerHeatmap) {
-    containerHeatmap.onwheel = containerOriginal.onwheel;
-    containerHeatmap.onmousedown = containerOriginal.onmousedown;
-    containerHeatmap.onmouseup = containerOriginal.onmouseup;
-    containerHeatmap.onmousemove = containerOriginal.onmousemove;
+  containerHeatmap.onwheel = containerOriginal.onwheel;
+  containerHeatmap.onmousedown = containerOriginal.onmousedown;
+  containerHeatmap.onmouseup = containerOriginal.onmouseup;
+  containerHeatmap.onmousemove = containerOriginal.onmousemove;
 }
 
 // Active Learning Simulation (SSE)
 function startTraining() {
-    const status = document.getElementById('trainingStatus');
-    const btn = document.getElementById('startTrainingBtn');
-    const progressContainer = document.getElementById('trainingProgressContainer');
-    const progressBar = document.getElementById('trainingProgressBar');
-    const statusText = document.getElementById('trainingStatusText');
-    const alertBox = document.getElementById('trainingAlert');
-    
-    // Reset UI
-    status.textContent = "Training startet...";
-    alertBox.className = "alert alert-warning";
-    btn.disabled = true;
-    progressContainer.style.display = 'block';
-    progressBar.style.width = '0%';
-    statusText.textContent = "Verbinde...";
-    
-    // Start SSE connection
-    const eventSource = new EventSource('/api/train');
-    
-    eventSource.onmessage = function(e) {
-        const data = JSON.parse(e.data);
-        
-        // Update Progress
-        progressBar.style.width = `${data.progress}%`;
-        statusText.textContent = data.message;
-        
-        // Check for completion
-        if (data.progress >= 100) {
-            eventSource.close();
-            status.textContent = "Training abgeschlossen!";
-            alertBox.className = "alert alert-success";
-            btn.disabled = false;
-            
-            // Update model version display
-            const versionDisplay = document.getElementById('modelVersionDisplay');
-            if (versionDisplay) versionDisplay.textContent = "v2.1-active";
-            
-            // Hide progress after delay
-            setTimeout(() => {
-                progressContainer.style.display = 'none';
-            }, 3000);
-        }
-    };
-    
-    eventSource.onerror = function(e) {
-        console.error("EventSource failed:", e);
-        eventSource.close();
-        status.textContent = "Fehler beim Training.";
-        alertBox.className = "alert alert-danger";
-        btn.disabled = false;
-        progressContainer.style.display = 'none';
-    };
+  const status = document.getElementById("trainingStatus");
+  const btn = document.getElementById("startTrainingBtn");
+  const progressContainer = document.getElementById(
+    "trainingProgressContainer"
+  );
+  const progressBar = document.getElementById("trainingProgressBar");
+  const statusText = document.getElementById("trainingStatusText");
+  const alertBox = document.getElementById("trainingAlert");
+
+  // Reset UI
+  status.textContent = "Training starting...";
+  alertBox.className = "alert alert-warning";
+  btn.disabled = true;
+  progressContainer.style.display = "block";
+  progressBar.style.width = "0%";
+  statusText.textContent = "Connecting...";
+
+  // Start SSE connection
+  const eventSource = new EventSource("/api/train");
+
+  eventSource.onmessage = function (e) {
+    const data = JSON.parse(e.data);
+
+    // Update Progress
+    progressBar.style.width = `${data.progress}%`;
+    statusText.textContent = data.message;
+
+    // Check for completion
+    if (data.progress >= 100) {
+      eventSource.close();
+      status.textContent = "Training completed!";
+      alertBox.className = "alert alert-success";
+      btn.disabled = false;
+
+      // Update model version display
+      const versionDisplay = document.getElementById("modelVersionDisplay");
+      if (versionDisplay) versionDisplay.textContent = "v2.1-active";
+
+      // Hide progress after delay
+      setTimeout(() => {
+        progressContainer.style.display = "none";
+      }, 3000);
+    }
+  };
+
+  eventSource.onerror = function (e) {
+    console.error("EventSource failed:", e);
+    eventSource.close();
+    status.textContent = "Training error.";
+    alertBox.className = "alert alert-danger";
+    btn.disabled = false;
+    progressContainer.style.display = "none";
+  };
 }
 
 // Theme Toggle
 function toggleTheme() {
-    const html = document.documentElement;
-    const currentTheme = html.getAttribute('data-theme');
-    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-    
-    html.setAttribute('data-theme', newTheme);
-    localStorage.setItem('theme', newTheme);
-    
-    updateThemeIcon(newTheme);
+  const html = document.documentElement;
+  const currentTheme = html.getAttribute("data-theme");
+  const newTheme = currentTheme === "dark" ? "light" : "dark";
+
+  html.setAttribute("data-theme", newTheme);
+  localStorage.setItem("theme", newTheme);
+
+  updateThemeIcon(newTheme);
 }
 
 function updateThemeIcon(theme) {
-    const btn = document.getElementById('themeToggleBtn');
-    if (btn) {
-        btn.textContent = theme === 'dark' ? '☀️ Light Mode' : '🌙 Dark Mode';
-    }
+  const btn = document.getElementById("themeToggleBtn");
+  if (btn) {
+    btn.textContent = theme === "dark" ? "Light Mode" : "Dark Mode";
+  }
 }
 
 // Initialize Theme
-const savedTheme = localStorage.getItem('theme') || 'light';
-document.documentElement.setAttribute('data-theme', savedTheme);
-document.addEventListener('DOMContentLoaded', () => {
-    updateThemeIcon(savedTheme);
+const savedTheme = localStorage.getItem("theme") || "light";
+document.documentElement.setAttribute("data-theme", savedTheme);
+document.addEventListener("DOMContentLoaded", () => {
+  updateThemeIcon(savedTheme);
 });
 
 /**
  * Main Frontend Logic
  * ===================
- * 
+ *
  * This file handles all user interactions and API communication.
- * 
+ *
  * Key Features:
  * - Image Upload & Drag-and-Drop
  * - API Calls to /api/predict and /api/train
  * - Visualization (Pie Chart, Probability Bars, Heatmap Overlay)
  * - Advanced UI (Dark Mode, Zoom/Pan, History, 3D Viewer Simulation)
- * 
+ *
  * How to Modify:
  * - Change API Endpoint: Look for `fetch('/api/predict', ...)` to change where images are sent.
  * - Adjust Thresholds: The uncertainty threshold is set at `0.60` (60%). Search for `uncertaintyAlert` to change it.
@@ -523,63 +635,13 @@ document.addEventListener('DOMContentLoaded', () => {
  */
 
 // Configuration
-const API_ENDPOINT = '/api/predict';
-const FEEDBACK_ENDPOINT = '/api/feedback';
-const CLASSES = ['Glioma', 'Meningioma', 'No Tumor', 'Pituitary'];
+const API_ENDPOINT = "/api/predict";
+const FEEDBACK_ENDPOINT = "/api/feedback";
+const CLASSES = ["Glioma", "Meningioma", "No Tumor", "Pituitary"];
 
 // State Variables
 
-// 3D Viewer Logic (Simulation)
-const sliceCanvas = document.getElementById('sliceCanvas');
-const sliceSlider = document.getElementById('sliceSlider');
-const sliceValue = document.getElementById('sliceValue');
-let sliceCtx = sliceCanvas ? sliceCanvas.getContext('2d') : null;
 
-function drawSlice(sliceIndex) {
-    if (!sliceCtx) return;
-    
-    // Clear
-    sliceCtx.fillStyle = '#000';
-    sliceCtx.fillRect(0, 0, 300, 300);
-    
-    // Simulate a brain shape that changes size with slice index
-    // Middle slices (15) are largest, edges (1, 30) are smallest
-    const center = 15;
-    const dist = Math.abs(sliceIndex - center);
-    const radius = 100 - (dist * 5); // Max radius 100, shrinks by 5 per slice
-    
-    if (radius > 0) {
-        sliceCtx.beginPath();
-        sliceCtx.arc(150, 150, radius, 0, Math.PI * 2);
-        sliceCtx.fillStyle = '#334155'; // Grey brain matter
-        sliceCtx.fill();
-        
-        // Add some "structure" inside
-        sliceCtx.beginPath();
-        sliceCtx.arc(150, 150, radius * 0.4, 0, Math.PI * 2);
-        sliceCtx.fillStyle = '#1e293b'; // Ventricles
-        sliceCtx.fill();
-        
-        // Simulate a tumor on some slices
-        if (sliceIndex >= 12 && sliceIndex <= 18) {
-            sliceCtx.beginPath();
-            sliceCtx.arc(180, 120, 15, 0, Math.PI * 2);
-            sliceCtx.fillStyle = 'rgba(239, 68, 68, 0.8)'; // Red tumor
-            sliceCtx.fill();
-        }
-    }
-}
-
-if (sliceSlider) {
-    sliceSlider.addEventListener('input', (e) => {
-        const val = parseInt(e.target.value);
-        sliceValue.textContent = val;
-        drawSlice(val);
-    });
-    
-    // Initial draw
-    drawSlice(15);
-}
 
 // Expose for HTML
 window.switchView = switchView;
@@ -590,213 +652,225 @@ window.toggleTheme = toggleTheme;
 
 // Draw bounding box on images
 function drawBoundingBox(bbox) {
-    if (!bbox) return;
-    
-    // Draw on original image
-    const bboxRectOriginal = document.getElementById('bboxRectOriginal');
-    const bboxLabelOriginal = document.getElementById('bboxLabelOriginal');
-    
-    bboxRectOriginal.setAttribute('x', `${bbox.x}%`);
-    bboxRectOriginal.setAttribute('y', `${bbox.y}%`);
-    bboxRectOriginal.setAttribute('width', `${bbox.width}%`);
-    bboxRectOriginal.setAttribute('height', `${bbox.height}%`);
-    
-    // Position label at top-left of bbox
-    bboxLabelOriginal.setAttribute('x', `${bbox.x + 1}%`);
-    bboxLabelOriginal.setAttribute('y', `${bbox.y + 4}%`);
-    bboxLabelOriginal.textContent = `Focus ${(bbox.confidence * 100).toFixed(0)}%`;
-    
-    // Draw on heatmap
-    const bboxRectHeatmap = document.getElementById('bboxRectHeatmap');
-    
-    bboxRectHeatmap.setAttribute('x', `${bbox.x}%`);
-    bboxRectHeatmap.setAttribute('y', `${bbox.y}%`);
-    bboxRectHeatmap.setAttribute('width', `${bbox.width}%`);
-    bboxRectHeatmap.setAttribute('height', `${bbox.height}%`);
+  if (!bbox) return;
+
+  // Draw on original image
+  const bboxRectOriginal = document.getElementById("bboxRectOriginal");
+  const bboxLabelOriginal = document.getElementById("bboxLabelOriginal");
+
+  bboxRectOriginal.setAttribute("x", `${bbox.x}%`);
+  bboxRectOriginal.setAttribute("y", `${bbox.y}%`);
+  bboxRectOriginal.setAttribute("width", `${bbox.width}%`);
+  bboxRectOriginal.setAttribute("height", `${bbox.height}%`);
+
+  // Position label at top-left of bbox
+  bboxLabelOriginal.setAttribute("x", `${bbox.x + 1}%`);
+  bboxLabelOriginal.setAttribute("y", `${bbox.y + 4}%`);
+  bboxLabelOriginal.textContent = `Focus ${(bbox.confidence * 100).toFixed(
+    0
+  )}%`;
+
+  // Draw on heatmap
+  const bboxRectHeatmap = document.getElementById("bboxRectHeatmap");
+
+  bboxRectHeatmap.setAttribute("x", `${bbox.x}%`);
+  bboxRectHeatmap.setAttribute("y", `${bbox.y}%`);
+  bboxRectHeatmap.setAttribute("width", `${bbox.width}%`);
+  bboxRectHeatmap.setAttribute("height", `${bbox.height}%`);
 }
 
 // Auto-accept feedback timer
 function startAutoAccept() {
-    cancelAutoAccept(); // Clear any existing timer
-    
-    autoAcceptCountdown = 5;
+  cancelAutoAccept(); // Clear any existing timer
+
+  autoAcceptCountdown = 5;
+  timerSeconds.textContent = autoAcceptCountdown;
+  autoAcceptTimer.style.display = "block";
+
+  const countdownInterval = setInterval(() => {
+    autoAcceptCountdown--;
     timerSeconds.textContent = autoAcceptCountdown;
-    autoAcceptTimer.style.display = 'block';
-    
-    const countdownInterval = setInterval(() => {
-        autoAcceptCountdown--;
-        timerSeconds.textContent = autoAcceptCountdown;
-        
-        if (autoAcceptCountdown <= 0) {
-            clearInterval(countdownInterval);
-            // Auto-submit as correct
-            submitFeedback(true);
-        }
-    }, 1000);
-    
-    // Store interval ID for cleanup
-    autoAcceptTimeoutId = countdownInterval;
+
+    if (autoAcceptCountdown <= 0) {
+      clearInterval(countdownInterval);
+      // Auto-submit as correct
+      submitFeedback(true);
+    }
+  }, 1000);
+
+  // Store interval ID for cleanup
+  autoAcceptTimeoutId = countdownInterval;
 }
 
 function cancelAutoAccept() {
-    if (autoAcceptTimeoutId) {
-        clearInterval(autoAcceptTimeoutId);
-        autoAcceptTimeoutId = null;
-    }
-    autoAcceptTimer.style.display = 'none';
+  if (autoAcceptTimeoutId) {
+    clearInterval(autoAcceptTimeoutId);
+    autoAcceptTimeoutId = null;
+  }
+  autoAcceptTimer.style.display = "none";
 }
 
 // Create pie chart
 function createPieChart(predictions) {
-    const ctx = document.getElementById('pieChart').getContext('2d');
+  const ctx = document.getElementById("pieChart").getContext("2d");
 
-    // Destroy previous chart
-    if (pieChart) {
-        pieChart.destroy();
-    }
+  // Destroy previous chart
+  if (pieChart) {
+    pieChart.destroy();
+  }
 
-    const colors = [
-        'rgba(239, 68, 68, 0.8)',   // Glioma - Red
-        'rgba(245, 158, 11, 0.8)',  // Meningioma - Orange
-        'rgba(16, 185, 129, 0.8)',  // No Tumor - Green
-        'rgba(99, 102, 241, 0.8)'   // Pituitary - Blue
-    ];
+  const colors = [
+    "rgba(239, 68, 68, 0.8)", // Glioma - Red
+    "rgba(245, 158, 11, 0.8)", // Meningioma - Orange
+    "rgba(16, 185, 129, 0.8)", // No Tumor - Green
+    "rgba(99, 102, 241, 0.8)", // Pituitary - Blue
+  ];
 
-    pieChart = new Chart(ctx, {
-        type: 'doughnut',
-        data: {
-            labels: predictions.map(p => p.class),
-            datasets: [{
-                data: predictions.map(p => p.probability * 100),
-                backgroundColor: colors,
-                borderWidth: 2,
-                borderColor: '#ffffff'
-            }]
+  pieChart = new Chart(ctx, {
+    type: "doughnut",
+    data: {
+      labels: predictions.map((p) => p.class),
+      datasets: [
+        {
+          data: predictions.map((p) => p.probability * 100),
+          backgroundColor: colors,
+          borderWidth: 2,
+          borderColor: "#ffffff",
         },
-        options: {
-            responsive: true,
-            maintainAspectRatio: true,
-            plugins: {
-                legend: {
-                    position: 'bottom',
-                    labels: {
-                        color: '#0f172a',
-                        padding: 15,
-                        font: { size: 12, weight: 600 }
-                    }
-                },
-                tooltip: {
-                    callbacks: {
-                        label: (context) => {
-                            return `${context.label}: ${context.parsed.toFixed(1)}%`;
-                        }
-                    }
-                }
-            }
-        }
-    });
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: {
+          position: "bottom",
+          labels: {
+            color: "#0f172a",
+            padding: 15,
+            font: { size: 12, weight: 600 },
+          },
+        },
+        tooltip: {
+          callbacks: {
+            label: (context) => {
+              return `${context.label}: ${context.parsed.toFixed(1)}%`;
+            },
+          },
+        },
+      },
+    },
+  });
 }
 
 // Create probability bars
 function createProbabilityBars(predictions) {
-    const container = document.getElementById('probabilityBars');
-    
-    // Sort by probability
-    const sorted = [...predictions].sort((a, b) => b.probability - a.probability);
+  const container = document.getElementById("probabilityBars");
 
-    container.innerHTML = sorted.map(pred => `
+  // Sort by probability
+  const sorted = [...predictions].sort((a, b) => b.probability - a.probability);
+
+  container.innerHTML = sorted
+    .map(
+      (pred) => `
         <div class="probability-item">
             <div class="probability-label">${pred.class}</div>
             <div class="probability-bar">
-                <div class="probability-fill" style="width: ${pred.probability * 100}%">
+                <div class="probability-fill" style="width: ${
+                  pred.probability * 100
+                }%">
                     ${(pred.probability * 100).toFixed(1)}%
                 </div>
             </div>
         </div>
-    `).join('');
+    `
+    )
+    .join("");
 }
 
 // Feedback Logic
 function showCorrectionDropdown() {
-    cancelAutoAccept(); // Stop auto-accept timer
-    feedbackButtons.style.display = 'none';
-    correctionSection.style.display = 'block';
+  cancelAutoAccept(); // Stop auto-accept timer
+  feedbackButtons.style.display = "none";
+  correctionSection.style.display = "block";
 }
 
 function resetFeedbackUI() {
-    feedbackButtons.style.display = 'flex';
-    correctionSection.style.display = 'none';
-    feedbackThankYou.style.display = 'none';
-    cancelAutoAccept();
+  feedbackButtons.style.display = "flex";
+  correctionSection.style.display = "none";
+  feedbackThankYou.style.display = "none";
+  cancelAutoAccept();
 }
 
 async function submitFeedback(isCorrect) {
-    if (!currentPredictionData) return;
-    
-    cancelAutoAccept(); // Stop auto-accept timer
+  if (!currentPredictionData) return;
 
-    const predictedLabel = currentPredictionData.top_prediction.class;
-    let trueLabel = predictedLabel;
+  cancelAutoAccept(); // Stop auto-accept timer
 
-    if (!isCorrect) {
-        trueLabel = correctionSelect.value;
+  const predictedLabel = currentPredictionData.top_prediction.class;
+  let trueLabel = predictedLabel;
+
+  if (!isCorrect) {
+    trueLabel = correctionSelect.value;
+  }
+
+  const feedbackData = {
+    filename: currentPredictionData.filename || "uploaded_image",
+    predicted_label: predictedLabel,
+    true_label: trueLabel,
+    confidence: currentPredictionData.top_prediction.probability,
+    timestamp: new Date().toISOString(),
+    model_version: currentPredictionData.model_version || "unknown",
+  };
+
+  try {
+    const response = await fetch("/api/feedback", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(feedbackData),
+    });
+
+    if (response.ok) {
+      feedbackButtons.style.display = "none";
+      correctionSection.style.display = "none";
+      feedbackThankYou.style.display = "block";
+
+      // Update stats
+      updateStats(isCorrect);
+    } else {
+      showError("Error saving feedback");
     }
-
-    const feedbackData = {
-        filename: currentPredictionData.filename || 'uploaded_image',
-        predicted_label: predictedLabel,
-        true_label: trueLabel,
-        confidence: currentPredictionData.top_prediction.probability,
-        timestamp: new Date().toISOString(),
-        model_version: currentPredictionData.model_version || 'unknown'
-    };
-
-    try {
-        const response = await fetch('/api/feedback', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(feedbackData)
-        });
-
-        if (response.ok) {
-            feedbackButtons.style.display = 'none';
-            correctionSection.style.display = 'none';
-            feedbackThankYou.style.display = 'block';
-            
-            // Update stats
-            updateStats(isCorrect);
-        } else {
-            showError('Fehler beim Speichern des Feedbacks');
-        }
-    } catch (err) {
-        showError('Fehler beim Senden des Feedbacks: ' + err.message);
-    }
+  } catch (err) {
+    showError("Error sending feedback: " + err.message);
+  }
 }
 
 // Show error message
 function showError(message) {
-    error.textContent = message;
-    error.style.display = 'block';
-    setTimeout(() => {
-        error.style.display = 'none';
-    }, 5000);
+  error.textContent = message;
+  error.style.display = "block";
+  setTimeout(() => {
+    error.style.display = "none";
+  }, 5000);
 }
 
 // Load device info
 async function loadDeviceInfo() {
-    try {
-        const response = await fetch('/api/health');
-        const data = await response.json();
-        document.getElementById('deviceInfo').textContent = `Device: ${data.device}`;
-        if (data.version) {
-             // Initial load might not have a prediction, but we can store it or show it somewhere if needed
-             // For now, we update it when results are shown
-        }
-    } catch (err) {
-        console.error('Failed to load device info');
+  try {
+    const response = await fetch("/api/health");
+    const data = await response.json();
+    document.getElementById(
+      "deviceInfo"
+    ).textContent = `Device: ${data.device}`;
+    if (data.version) {
+      // Initial load might not have a prediction, but we can store it or show it somewhere if needed
+      // For now, we update it when results are shown
     }
+  } catch (err) {
+    console.error("Failed to load device info");
+  }
 }
 
 // Initialize
@@ -806,40 +880,40 @@ window.submitFeedback = submitFeedback;
 window.showCorrectionDropdown = showCorrectionDropdown;
 
 // Keyboard Shortcuts
-document.addEventListener('keydown', (e) => {
-    // Only if results are visible
-    if (results.style.display === 'none') return;
-    
-    // Ignore if typing in an input (though we don't have many)
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+document.addEventListener("keydown", (e) => {
+  // Only if results are visible
+  if (results.style.display === "none") return;
 
-    const key = e.key.toLowerCase();
+  // Ignore if typing in an input (though we don't have many)
+  if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
 
-    // Feedback shortcuts (only if feedback buttons are visible)
-    if (feedbackButtons.style.display !== 'none') {
-        if (key === 'y') {
-            submitFeedback(true);
-        } else if (key === 'n') {
-            showCorrectionDropdown();
-        }
-    }
-    
-    // Correction dropdown shortcuts (only if correction section is visible)
-    if (correctionSection.style.display !== 'none') {
-        if (key === 'enter') {
-             submitFeedback(false);
-        }
-    }
+  const key = e.key.toLowerCase();
 
-    // Reload shortcut (Enter) - only if not in correction mode
-    if (key === 'enter' && correctionSection.style.display === 'none') {
-        // Check if reload button is visible/clickable
-        if (reloadRandomBtn && reloadRandomBtn.offsetParent !== null) {
-            loadRandomTest();
-        } else if (randomTestBtn && randomTestBtn.offsetParent !== null) {
-            // Also allow top button if results not shown, but we checked results.display above.
-            // Actually, if results are shown, reloadRandomBtn is the one to click.
-            loadRandomTest();
-        }
+  // Feedback shortcuts (only if feedback buttons are visible)
+  if (feedbackButtons.style.display !== "none") {
+    if (key === "y") {
+      submitFeedback(true);
+    } else if (key === "n") {
+      showCorrectionDropdown();
     }
+  }
+
+  // Correction dropdown shortcuts (only if correction section is visible)
+  if (correctionSection.style.display !== "none") {
+    if (key === "enter") {
+      submitFeedback(false);
+    }
+  }
+
+  // Reload shortcut (Enter) - only if not in correction mode
+  if (key === "enter" && correctionSection.style.display === "none") {
+    // Check if reload button is visible/clickable
+    if (reloadRandomBtn && reloadRandomBtn.offsetParent !== null) {
+      loadRandomTest();
+    } else if (randomTestBtn && randomTestBtn.offsetParent !== null) {
+      // Also allow top button if results not shown, but we checked results.display above.
+      // Actually, if results are shown, reloadRandomBtn is the one to click.
+      loadRandomTest();
+    }
+  }
 });

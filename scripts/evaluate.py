@@ -16,25 +16,24 @@ How to Modify:
 - Model: Change `MODEL_PATH` to evaluate a different checkpoint.
 """
 
-import os
-import torch
-import torch.nn as nn
-from torchvision import datasets, transforms, models
-from torch.utils.data import DataLoader
-from sklearn.metrics import confusion_matrix, classification_report, accuracy_score
-import matplotlib.pyplot as plt
-import seaborn as sns
-import numpy as np
 import shutil
 from pathlib import Path
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+import torch
+import torch.nn as nn
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+from torch.utils.data import DataLoader
+from torchvision import datasets, models, transforms
 
 # Configuration
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data" / "Brain_Tumor_Dataset" / "external_dataset" / "training"
-MODEL_PATH = BASE_DIR / "models" / "brain_tumor_resnet18_v2.pt"
+MODEL_PATH = BASE_DIR / "models" / "brain_tumor_resnet18_v2_trained.pt"
 if not MODEL_PATH.exists():
-    print(f"Model {MODEL_PATH} not found, falling back to v1")
-    MODEL_PATH = BASE_DIR / "models" / "brain_tumor_resnet18_final.pt"
+    print(f"Model {MODEL_PATH} not found, falling back to old naming")
+    MODEL_PATH = BASE_DIR / "models" / "brain_tumor_resnet18_v2.pt"
 
 MISCLASSIFIED_DIR = BASE_DIR / "misclassified"
 BATCH_SIZE = 32
@@ -50,14 +49,15 @@ else:
 print(f"Using device: {device}")
 
 # Transforms (Validation only)
-val_tf = transforms.Compose([
-    transforms.Grayscale(num_output_channels=3),
-    transforms.Resize(256),
-    transforms.CenterCrop(224),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                         std=[0.229, 0.224, 0.225]),
-])
+val_tf = transforms.Compose(
+    [
+        transforms.Grayscale(num_output_channels=3),
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ]
+)
 
 # Load Data
 print("Loading external dataset...")
@@ -95,23 +95,25 @@ with torch.no_grad():
         x = x.to(device)
         outputs = model(x)
         _, preds = torch.max(outputs, 1)
-        
+
         all_preds.extend(preds.cpu().numpy())
         all_labels.extend(y.numpy())
-        
+
         # Track misclassifications
-        # We need original indices to get filenames. 
+        # We need original indices to get filenames.
         # ImageFolder preserves order if shuffle=False.
         start_idx = i * 32
         for j in range(len(preds)):
             if preds[j] != y[j]:
                 idx = start_idx + j
                 path, _ = dataset.samples[idx]
-                misclassified.append({
-                    "path": path,
-                    "true_label": class_names[y[j]],
-                    "pred_label": class_names[preds[j]]
-                })
+                misclassified.append(
+                    {
+                        "path": path,
+                        "true_label": class_names[y[j]],
+                        "pred_label": class_names[preds[j]],
+                    }
+                )
 
 # Metrics
 acc = accuracy_score(all_labels, all_preds)
@@ -122,7 +124,14 @@ print(classification_report(all_labels, all_preds, target_names=class_names))
 
 cm = confusion_matrix(all_labels, all_preds)
 plt.figure(figsize=(8, 6))
-sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=class_names, yticklabels=class_names)
+sns.heatmap(
+    cm,
+    annot=True,
+    fmt="d",
+    cmap="Blues",
+    xticklabels=class_names,
+    yticklabels=class_names,
+)
 plt.xlabel("Predicted")
 plt.ylabel("True")
 plt.title("Confusion Matrix")
@@ -140,9 +149,9 @@ for item in misclassified:
     folder_name = f"{item['true_label']}_as_{item['pred_label']}"
     target_dir = MISCLASSIFIED_DIR / folder_name
     target_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Copy file
-    src = Path(item['path'])
+    src = Path(item["path"])
     dst = target_dir / src.name
     shutil.copy2(src, dst)
 

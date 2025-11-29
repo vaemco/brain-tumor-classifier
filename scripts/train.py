@@ -1,4 +1,3 @@
-
 """
 Training Script for Brain Tumor Classifier (ResNet18)
 =====================================================
@@ -19,17 +18,15 @@ How to Modify:
 """
 
 import os
-import json
+from copy import deepcopy
+from pathlib import Path
+
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torch.nn.functional as F
-from torch.utils.data import DataLoader, random_split, ConcatDataset
-from torchvision import datasets, transforms, models
-from copy import deepcopy
-from pathlib import Path
-import matplotlib.pyplot as plt
+from torch.utils.data import ConcatDataset, DataLoader, random_split
+from torchvision import datasets, models, transforms
 
 # --- Device Configuration ---
 # Automatically detects MPS (Mac), CUDA (NVIDIA), or CPU.
@@ -46,58 +43,75 @@ else:
 print(f"PyTorch version: {torch.__version__}")
 
 # Data Paths
-    # Define paths relative to the script
+# Define paths relative to the script
 base_dir = Path(__file__).resolve().parent.parent
 data_dir = base_dir / "data" / "Brain_Tumor_Dataset" / "Training"
-external_data_dir = base_dir / "data" / "Brain_Tumor_Dataset" / "external_dataset" / "training"
+external_data_dir = (
+    base_dir / "data" / "Brain_Tumor_Dataset" / "external_dataset" / "training"
+)
 
 print(f"Main Data Dir: {data_dir}")
 print(f"External Data Dir: {external_data_dir}")
 
+
 # Custom Noise Transform
 class AddGaussianNoise(object):
-    def __init__(self, mean=0., std=1.):
+    def __init__(self, mean=0.0, std=1.0):
         self.std = std
         self.mean = mean
-        
+
     def __call__(self, tensor):
         return tensor + torch.randn(tensor.size()) * self.std + self.mean
-    
+
     def __repr__(self):
-        return self.__class__.__name__ + '(mean={0}, std={1})'.format(self.mean, self.std)
+        return self.__class__.__name__ + "(mean={0}, std={1})".format(
+            self.mean, self.std
+        )
+
 
 # --- Data Augmentation (Crucial for Generalization) ---
 # These transformations are applied to every training image on the fly.
 # They help the model learn to recognize tumors even if the image is rotated, blurry, or has different lighting.
-train_tf = transforms.Compose([
-    transforms.Grayscale(num_output_channels=3), # Ensure 3 channels even if input is B&W
-    transforms.Resize(256),
-    transforms.RandomResizedCrop(224, scale=(0.8, 1.0), ratio=(0.90, 1.10)), # Zoom in/out slightly
-    transforms.RandomHorizontalFlip(p=0.5), # Mirror image
-    # Rotation & Affine: Simulates imperfect patient positioning
-    transforms.RandomRotation(30),
-    transforms.RandomAffine(degrees=0, translate=(0.1, 0.1), scale=(0.9, 1.1), shear=10),
-    # Blur: Simulates motion or lower quality scans
-    transforms.RandomApply([transforms.GaussianBlur(kernel_size=3)], p=0.2),
-    # Color/Contrast Jitter: Simulates different scanner settings
-    transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.1, hue=0.05),
-    transforms.ToTensor(),
-    # Noise: Simulates sensor noise (grain)
-    transforms.RandomApply([AddGaussianNoise(0., 0.05)], p=0.2),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], # ImageNet standards
-                         std=[0.229, 0.224, 0.225]),
-])
+train_tf = transforms.Compose(
+    [
+        transforms.Grayscale(
+            num_output_channels=3
+        ),  # Ensure 3 channels even if input is B&W
+        transforms.Resize(256),
+        transforms.RandomResizedCrop(
+            224, scale=(0.8, 1.0), ratio=(0.90, 1.10)
+        ),  # Zoom in/out slightly
+        transforms.RandomHorizontalFlip(p=0.5),  # Mirror image
+        # Rotation & Affine: Simulates imperfect patient positioning
+        transforms.RandomRotation(30),
+        transforms.RandomAffine(
+            degrees=0, translate=(0.1, 0.1), scale=(0.9, 1.1), shear=10
+        ),
+        # Blur: Simulates motion or lower quality scans
+        transforms.RandomApply([transforms.GaussianBlur(kernel_size=3)], p=0.2),
+        # Color/Contrast Jitter: Simulates different scanner settings
+        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.1, hue=0.05),
+        transforms.ToTensor(),
+        # Noise: Simulates sensor noise (grain)
+        transforms.RandomApply([AddGaussianNoise(0.0, 0.05)], p=0.2),
+        transforms.Normalize(
+            mean=[0.485, 0.456, 0.406],  # ImageNet standards
+            std=[0.229, 0.224, 0.225],
+        ),
+    ]
+)
 
 # Validation transforms: No augmentation, just resizing and normalization.
 # We want to evaluate on clean, standard images.
-val_tf = transforms.Compose([
-    transforms.Grayscale(num_output_channels=3),
-    transforms.Resize(256),
-    transforms.CenterCrop(224),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                         std=[0.229, 0.224, 0.225]),
-])
+val_tf = transforms.Compose(
+    [
+        transforms.Grayscale(num_output_channels=3),
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ]
+)
 
 # Load Datasets
 print("Loading datasets...")
@@ -129,11 +143,12 @@ train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size])
 # So train_dataset has train_tf. val_dataset ALSO has train_tf.
 # We need to fix this.
 
+
 class TransformedSubset(torch.utils.data.Dataset):
     def __init__(self, subset, transform=None):
         self.subset = subset
         self.transform = transform
-        
+
     def __getitem__(self, index):
         x, y = self.subset[index]
         if self.transform:
@@ -143,9 +158,10 @@ class TransformedSubset(torch.utils.data.Dataset):
             # Alternative: Load dataset twice.
             pass
         return x, y
-        
+
     def __len__(self):
         return len(self.subset)
+
 
 # Better approach: Load dataset twice
 dataset1_train = datasets.ImageFolder(root=data_dir, transform=train_tf)
@@ -154,7 +170,7 @@ dataset1_val = datasets.ImageFolder(root=data_dir, transform=val_tf)
 try:
     dataset2_train = datasets.ImageFolder(root=external_data_dir, transform=train_tf)
     dataset2_val = datasets.ImageFolder(root=external_data_dir, transform=val_tf)
-    
+
     full_train = ConcatDataset([dataset1_train, dataset2_train])
     full_val = ConcatDataset([dataset1_val, dataset2_val])
 except:
@@ -170,7 +186,9 @@ train_idx, val_idx = indices[split:], indices[:split]
 train_sampler = torch.utils.data.SubsetRandomSampler(train_idx)
 val_sampler = torch.utils.data.SubsetRandomSampler(val_idx)
 
-train_loader = DataLoader(full_train, batch_size=32, sampler=train_sampler, num_workers=0)
+train_loader = DataLoader(
+    full_train, batch_size=32, sampler=train_sampler, num_workers=0
+)
 val_loader = DataLoader(full_val, batch_size=32, sampler=val_sampler, num_workers=0)
 
 print(f"Training batches: {len(train_loader)}")
@@ -192,7 +210,14 @@ model = base.to(device)
 
 # Optimizer
 params = [
-    {"params": [p for n,p in model.named_parameters() if p.requires_grad and (n.startswith("layer3") or n.startswith("layer4"))], "lr": 3e-4},
+    {
+        "params": [
+            p
+            for n, p in model.named_parameters()
+            if p.requires_grad and (n.startswith("layer3") or n.startswith("layer4"))
+        ],
+        "lr": 3e-4,
+    },
     {"params": model.fc.parameters(), "lr": 1e-3},
 ]
 optimizer = optim.Adam(params, weight_decay=1e-4)
@@ -205,7 +230,7 @@ epochs = 30
 patience = 5
 best_val = float("inf")
 bad = 0
-history = {"train_loss":[], "val_loss":[], "train_acc":[], "val_acc":[]}
+history = {"train_loss": [], "val_loss": [], "train_acc": [], "val_acc": []}
 
 output_dir = base_dir / "runs"
 model_dir = base_dir / "models"
@@ -213,7 +238,7 @@ os.makedirs(output_dir, exist_ok=True)
 os.makedirs(model_dir, exist_ok=True)
 
 metrics_file = os.path.join(output_dir, "metrics_v2.json")
-model_save_path = os.path.join(model_dir, "brain_tumor_resnet18_v2.pt")
+model_save_path = os.path.join(model_dir, "brain_tumor_resnet18_v2_trained.pt")
 
 print("Starting training...")
 
@@ -224,19 +249,19 @@ for epoch in range(epochs):
     for batch_idx, (x, y) in enumerate(train_loader):
         x, y = x.to(device), y.to(device)
         optimizer.zero_grad()
-        
+
         out = model(x)
         loss = criterion(out, y)
         loss.backward()
         optimizer.step()
-        
+
         tl += loss.item() * x.size(0)
         tc += (out.argmax(1) == y).sum().item()
         tt += y.size(0)
-    
+
     train_loss = tl / tt
     train_acc = 100 * tc / tt
-    
+
     # --- Validation ---
     model.eval()
     vl, vc, vt = 0.0, 0, 0
@@ -248,18 +273,20 @@ for epoch in range(epochs):
             vl += loss.item() * x.size(0)
             vc += (out.argmax(1) == y).sum().item()
             vt += y.size(0)
-    
+
     val_loss = vl / vt
     val_acc = 100 * vc / vt
-    
+
     # Save history
     history["train_loss"].append(train_loss)
     history["val_loss"].append(val_loss)
     history["train_acc"].append(train_acc)
     history["val_acc"].append(val_acc)
-    
-    print(f"Epoch {epoch+1:02d} | Train {train_loss:.4f}, Acc {train_acc:.2f}% | Val {val_loss:.4f}, Acc {val_acc:.2f}%")
-    
+
+    print(
+        f"Epoch {epoch + 1:02d} | Train {train_loss:.4f}, Acc {train_acc:.2f}% | Val {val_loss:.4f}, Acc {val_acc:.2f}%"
+    )
+
     # Early Stopping
     if val_loss < best_val:
         best_val = val_loss

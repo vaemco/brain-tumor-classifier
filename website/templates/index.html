@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html lang="en" data-theme="light">
-<!-- 
+  <!--
     Brain Tumor Classifier - Main Interface
     =======================================
-    
+
     Structure:
     - Sidebar: Navigation and global controls (Dark Mode, Report).
     - Main Content:
@@ -11,318 +11,398 @@
         - View: History (List of past analyses)
         - View: 3D Viewer (Simulated slice viewer)
         - View: Settings (Active Learning simulation)
-    
+
     How to Modify:
     - Add New Tab: Create a new `<div id="view-newname" class="view-section">` and add a button in the sidebar.
     - Change Layout: The grid structure is defined in `.compact-grid` (CSS).
     - Libraries: Chart.js is loaded via CDN at the bottom of the body.
 -->
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Brain Tumor Classifier - AI-Powered MRI Analysis</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/style.css') }}"
+    />
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-</head>
-<body>
+  </head>
+  <body>
     <div class="app-layout">
-        <!-- Sidebar -->
-        <aside class="sidebar">
-            <div class="sidebar-header">
-                <h1>🧠 Brain<br>Tumor<br>Classifier</h1>
-                <p class="sidebar-subtitle">v2.0 • Medical AI</p>
-            </div>
-            
-            <nav class="sidebar-nav">
-                <button class="nav-item active" onclick="switchView('analyze')">
-                    <span class="icon">🔬</span> Analyse
-                </button>
-                <button class="nav-item" onclick="switchView('history')">
-                    <span class="icon">🕒</span> Verlauf
-                </button>
-                <button class="nav-item" onclick="switchView('3d')">
-                    <span class="icon">🧠</span> 3D Viewer
-                </button>
-                <button class="nav-item" onclick="switchView('settings')">
-                    <span class="icon">⚙️</span> Training & Info
-                </button>
-            </nav>
+      <!-- Sidebar -->
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <h1>Brain<br />Tumor<br />Classifier</h1>
+          <p class="sidebar-subtitle">v2.0 • Medical AI</p>
+        </div>
 
-            <div class="sidebar-footer">
-                <div class="stats-mini">
-                    <div class="stat-row">
-                        <span>Genauigkeit:</span>
-                        <span id="accuracyDisplaySidebar">0%</span>
-                    </div>
+        <nav class="sidebar-nav">
+          <button class="nav-item active" onclick="switchView('analyze')">
+            <span class="icon">🔬</span> Analyze
+          </button>
+          <button class="nav-item" onclick="switchView('history')">
+            <span class="icon">🕒</span> History
+          </button>
+
+          <button class="nav-item" onclick="switchView('settings')">
+            <span class="icon">⚙️</span> Training & Info
+          </button>
+        </nav>
+
+        <div class="sidebar-footer">
+          <div class="stats-mini">
+            <div class="stat-row">
+              <span>Accuracy:</span>
+              <span id="accuracyDisplaySidebar">0%</span>
+            </div>
+          </div>
+          <button class="nav-item" onclick="toggleTheme()" id="themeToggleBtn">
+            Dark Mode
+          </button>
+          <button
+            id="printReportBtn"
+            class="btn btn-outline-light btn-sm w-100"
+            onclick="window.print()"
+          >
+            Report
+          </button>
+        </div>
+      </aside>
+
+      <!-- Main Content -->
+      <main class="main-content">
+        <!-- Disclaimer Banner -->
+        <div class="disclaimer-banner">
+          ⚠️ <strong>Research Demo:</strong> Not for medical diagnosis. All
+          information without warranty.
+        </div>
+
+        <!-- View: Analyze -->
+        <div id="view-analyze" class="view-section active">
+          <div class="container">
+            <!-- Control Section -->
+            <section class="control-section">
+              <div class="stats-container" id="statsContainer">
+                <div class="stat-item">
+                  <span class="stat-label">Accuracy</span>
+                  <span class="stat-value" id="accuracyDisplay">0%</span>
                 </div>
-                <button class="nav-item" onclick="toggleTheme()" id="themeToggleBtn">
-                    🌙 Dark Mode
+                <div class="stat-item">
+                  <span class="stat-label">Correct/Total</span>
+                  <span class="stat-value" id="countDisplay">0 / 0</span>
+                </div>
+              </div>
+              <div class="button-group">
+                <button id="randomTestBtn" class="btn btn-primary">
+                  Random Test Image
                 </button>
-                <button id="printReportBtn" class="btn btn-outline-light btn-sm w-100" onclick="window.print()">
-                    🖨️ Report
-                </button>
-            </div>
-        </aside>
+              </div>
+            </section>
 
-        <!-- Main Content -->
-        <main class="main-content">
-            <!-- Disclaimer Banner -->
-            <div class="disclaimer-banner">
-                ⚠️ <strong>Forschungs-Demo:</strong> Keine medizinische Diagnose. Alle Angaben ohne Gewähr.
-            </div>
-
-            <!-- View: Analyze -->
-            <div id="view-analyze" class="view-section active">
-                <div class="container">
-                    <!-- Control Section -->
-                    <section class="control-section">
-                        <div class="stats-container" id="statsContainer">
-                            <div class="stat-item">
-                                <span class="stat-label">Genauigkeit</span>
-                                <span class="stat-value" id="accuracyDisplay">0%</span>
-                            </div>
-                            <div class="stat-item">
-                                <span class="stat-label">Richtig/Gesamt</span>
-                                <span class="stat-value" id="countDisplay">0 / 0</span>
-                            </div>
-                        </div>
-                        <div class="button-group">
-                            <button id="randomTestBtn" class="btn btn-primary">
-                                🎲 Random Test Image
-                            </button>
-                        </div>
-                    </section>
-            
-                    <!-- Upload Section -->
-                    <section class="upload-section">
-                        <div id="dropzone" class="dropzone">
-                            <div class="dropzone-content">
-                                <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
-                                </svg>
-                                <p class="dropzone-text">Ziehe dein MRI-Bild hierher</p>
-                                <p class="dropzone-subtext">oder klicke zum Auswählen</p>
-                               <p class="dropzone-format">PNG, JPG • Max 16MB</p>
-                            </div>
-                            <input type="file" id="fileInput" accept="image/*" style="display: none;">
-                        </div>
-                    </section>
-            
-                    <!-- Results Section -->
-                    <section id="results" class="results" style="display: none;">
-                        <!-- Uncertainty Alert -->
-                        <div id="uncertaintyAlert" class="alert alert-warning" style="display: none;">
-                            ⚠️ <strong>Unsichere Vorhersage:</strong> Das Modell ist sich nicht sicher. Bitte manuell prüfen.
-                        </div>
-
-                        <!-- Compact Grid Layout -->
-                        <div class="compact-grid">
-                            <!-- Left Column: Prediction & Chart -->
-                            <div class="grid-left">
-                                <div class="card prediction-card">
-                                    <h2>📊 Klassifizierung</h2>
-                                    <div id="predictionResult" class="prediction-result"></div>
-                                    <canvas id="pieChart"></canvas>
-                                </div>
-                                
-                                <!-- Multi-Model Consensus -->
-                                <div class="card" id="consensusCard" style="display: none;">
-                                    <h2>🤖 KI-Konsens</h2>
-                                    <div class="consensus-header">
-                                        <div class="consensus-badge" id="consensusBadge">3/3 Stimmen</div>
-                                        <span id="consensusWinner" class="consensus-winner">Glioma</span>
-                                    </div>
-                                    <div class="model-votes" id="modelVotes">
-                                        <!-- Populated by JS -->
-                                    </div>
-                                </div>
-                                
-                                <!-- Similar Cases -->
-                                <div class="card" id="similarCasesCard" style="display: none;">
-                                    <h2>🔍 Ähnliche Fälle</h2>
-                                    <p class="text-muted small mb-2">Basierend auf visueller Ähnlichkeit (Simuliert)</p>
-                                    <div class="similar-cases-grid" id="similarCasesGrid">
-                                        <!-- Populated by JS -->
-                                    </div>
-                                </div>
-
-                                <div class="card">
-                                    <h2>📈 Wahrscheinlichkeiten</h2>
-                                    <div id="probabilityBars" class="probability-bars"></div>
-                                </div>
-                            </div>
-            
-                            <!-- Right Column: Images & Feedback -->
-                            <div class="grid-right">
-                                <div class="card image-card">
-                                    <div class="card-header-row">
-                                        <h2>🔍 KI-Analyse</h2>
-                                        <div class="tooltip-container">
-                                            <span class="info-icon">ℹ️</span>
-                                            <div class="tooltip-text">
-                                                <strong>Grad-CAM Visualisierung:</strong><br>
-                                                Zeigt, welche Bildbereiche für die Entscheidung des Modells am wichtigsten waren.
-                                                <br><br>
-                                                🔴 Rote Bereiche = Hohe Relevanz<br>
-                                                🔵 Blaue Bereiche = Niedrige Relevanz
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div id="filenameDisplay" class="filename-badge"></div>
-                                    
-                                    <!-- Zoom/Pan Controls -->
-                                    <div class="zoom-controls">
-                                        <small>Mausrad zum Zoomen • Ziehen zum Bewegen</small>
-                                        <button class="btn-icon" onclick="resetZoom()">↺ Reset</button>
-                                    </div>
-
-                                    <div class="image-comparison">
-                                        <div class="image-container" id="containerOriginal">
-                                            <div class="pan-zoom-wrapper" id="wrapperOriginal">
-                                                <img id="originalImage" alt="Original">
-                                                <!-- Bounding Box Overlay -->
-                                                <svg class="bbox-overlay" id="bboxOverlayOriginal">
-                                                    <rect class="bbox-rect" id="bboxRectOriginal" />
-                                                    <text class="bbox-label" id="bboxLabelOriginal"></text>
-                                                </svg>
-                                            </div>
-                                            <span class="image-label">Original</span>
-                                        </div>
-                                        <div class="image-container" id="containerHeatmap">
-                                            <div class="pan-zoom-wrapper" id="wrapperHeatmap">
-                                                <img id="heatmapImage" alt="Heatmap" class="heatmap-progressive">
-                                                <!-- Bounding Box Overlay -->
-                                                <svg class="bbox-overlay" id="bboxOverlayHeatmap">
-                                                    <rect class="bbox-rect" id="bboxRectHeatmap" />
-                                                </svg>
-                                            </div>
-                                            <span class="image-label">Heatmap</span>
-                                            <div id="analysisProgress" class="analysis-overlay">
-                                                <div class="progress-text">Analysiere...</div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <!-- Compact Feedback Section -->
-                                <div class="card feedback-card-compact">
-                                    <div class="feedback-header">
-                                        <h3>Korrekt?</h3>
-                                        <div id="autoAcceptTimer" class="auto-accept-timer" style="display: none;">
-                                            Auto-Accept in <span id="timerSeconds">5</span>s
-                                        </div>
-                                    </div>
-                                    <div id="feedbackButtons" class="feedback-buttons-compact">
-                                        <button class="btn btn-success btn-sm" onclick="submitFeedback(true)">✅ Ja</button>
-                                        <button class="btn btn-danger btn-sm" onclick="showCorrectionDropdown()">❌ Nein</button>
-                                    </div>
-                                    
-                                    <div id="correctionSection" class="correction-section" style="display: none;">
-                                        <p>Korrekte Klasse:</p>
-                                        <div class="correction-inline">
-                                            <select id="correctionSelect" class="form-select">
-                                                <option value="Glioma">Glioma</option>
-                                                <option value="Meningioma">Meningioma</option>
-                                                <option value="No Tumor">No Tumor</option>
-                                                <option value="Pituitary">Pituitary</option>
-                                            </select>
-                                            <button class="btn btn-primary btn-sm" onclick="submitFeedback(false)">OK</button>
-                                        </div>
-                                    </div>
-                                    <div id="feedbackThankYou" style="display: none;" class="success-message">
-                                        ✓ Feedback gespeichert
-                                    </div>
-                                </div>
-            
-                                <!-- Reload Button at Bottom -->
-                                <button id="reloadRandomBtn" class="btn btn-primary btn-reload">
-                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
-                                    </svg>
-                                    Nächstes Bild
-                                </button>
-                            </div>
-                        </div>
-                        
-                        <div class="model-info-footer">
-                            <span class="badge">Model: <span id="modelVersionDisplay">v1</span></span>
-                        </div>
-                    </section>
-            
-                    <!-- Loading Spinner -->
-                    <div id="loading" class="loading" style="display: none;">
-                        <div class="spinner"></div>
-                        <p>Analysiere MRI-Bild...</p>
-                    </div>
-            
-                    <!-- Error Message -->
-                    <div id="error" class="error" style="display: none;"></div>
+            <!-- Upload Section -->
+            <section class="upload-section">
+              <div id="dropzone" class="dropzone">
+                <div class="dropzone-content">
+                  <svg
+                    class="upload-icon"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                    />
+                  </svg>
+                  <p class="dropzone-text">Drag your MRI image here</p>
+                  <p class="dropzone-subtext">or click to select</p>
+                  <p class="dropzone-format">PNG, JPG • Max 16MB</p>
                 </div>
-            </div>
+                <input
+                  type="file"
+                  id="fileInput"
+                  accept="image/*"
+                  style="display: none"
+                />
+              </div>
+            </section>
 
-            <!-- View: History -->
-            <div id="view-history" class="view-section">
-                <div class="container">
-                    <h2>🕒 Verlauf</h2>
-                    <div id="historyList" class="history-list">
-                        <p class="text-muted">Noch keine Analysen in dieser Sitzung.</p>
+            <!-- Results Section -->
+            <section id="results" class="results" style="display: none">
+              <!-- Uncertainty Alert -->
+              <div
+                id="uncertaintyAlert"
+                class="alert alert-warning"
+                style="display: none"
+              >
+                ⚠️ <strong>Uncertain Prediction:</strong> The model is not
+                confident. Please review manually.
+              </div>
+
+              <!-- Compact Grid Layout -->
+              <div class="compact-grid">
+                <!-- Left Column: Prediction & Chart -->
+                <div class="grid-left">
+                  <div class="card prediction-card">
+                    <h2>Classification</h2>
+                    <div id="predictionResult" class="prediction-result"></div>
+                    <canvas id="pieChart"></canvas>
+                  </div>
+
+                  <!-- Multi-Model Consensus -->
+                  <div class="card" id="consensusCard" style="display: none">
+                    <h2>AI Consensus</h2>
+                    <div class="consensus-header">
+                      <div class="consensus-badge" id="consensusBadge">
+                        3/3 Votes
+                      </div>
+                      <span id="consensusWinner" class="consensus-winner"
+                        >Glioma</span
+                      >
                     </div>
-                </div>
-            </div>
-
-            <!-- View: 3D Viewer -->
-            <div id="view-3d" class="view-section">
-                <div class="container">
-                    <h2>🧠 3D Slice Viewer</h2>
-                    <div class="card">
-                        <div class="viewer-3d-container">
-                            <canvas id="sliceCanvas" width="300" height="300"></canvas>
-                            <div class="slice-controls">
-                                <label>Slice Position: <span id="sliceValue">15</span>/30</label>
-                                <input type="range" id="sliceSlider" min="1" max="30" value="15" class="slider">
-                            </div>
-                            <p class="text-muted small mt-2 text-center">Simulierte 3D-Ansicht (Axial)</p>
-                        </div>
+                    <div class="model-votes" id="modelVotes">
+                      <!-- Populated by JS -->
                     </div>
+                  </div>
+
+                  <!-- Similar Cases -->
+                  <div class="card" id="similarCasesCard" style="display: none">
+                    <h2>Similar Cases</h2>
+                    <p class="text-muted small mb-2">
+                      Based on visual similarity (Simulated)
+                    </p>
+                    <div class="similar-cases-grid" id="similarCasesGrid">
+                      <!-- Populated by JS -->
+                    </div>
+                  </div>
+
+                  <div class="card">
+                    <h2>Probabilities</h2>
+                    <div id="probabilityBars" class="probability-bars"></div>
+                  </div>
                 </div>
-            </div>
 
-            <!-- View: Settings -->
-            <div id="view-settings" class="view-section">
-                <div class="container">
-                    <h2>⚙️ Einstellungen & Training</h2>
-                    
-                    <div class="card mb-4">
-                        <h3>Active Learning</h3>
-                        <p>Trainiere das Modell mit deinem gesammelten Feedback nach.</p>
-                        
-                        <div id="trainingProgressContainer" style="display: none; margin-top: 1rem;">
-                            <div class="progress-wrapper">
-                                <div id="trainingProgressBar" class="progress-bar" style="width: 0%"></div>
-                            </div>
-                            <p id="trainingStatusText" class="text-muted small mt-2">Initialisiere...</p>
+                <!-- Right Column: Images & Feedback -->
+                <div class="grid-right">
+                  <div class="card image-card">
+                    <div class="card-header-row">
+                      <h2>AI Analysis</h2>
+                      <div class="tooltip-container">
+                        <span class="info-icon">ℹ️</span>
+                        <div class="tooltip-text">
+                          <strong>Grad-CAM Visualization:</strong><br />
+                          Shows which image regions were most important for the
+                          model's decision.
+                          <br /><br />
+                          🔴 Red areas = High relevance<br />
+                          🔵 Blue areas = Low relevance
                         </div>
+                      </div>
+                    </div>
+                    <div id="filenameDisplay" class="filename-badge"></div>
 
-                        <div class="alert alert-info" id="trainingAlert">
-                            <strong>Status:</strong> <span id="trainingStatus">Bereit</span>
+                    <!-- Zoom/Pan Controls -->
+                    <div class="zoom-controls">
+                      <small>Mouse wheel to zoom • Drag to pan</small>
+                      <button class="btn-icon" onclick="resetZoom()">
+                        ↺ Reset
+                      </button>
+                    </div>
+
+                    <div class="image-comparison">
+                      <div class="image-container" id="containerOriginal">
+                        <div class="pan-zoom-wrapper" id="wrapperOriginal">
+                          <img id="originalImage" alt="Original" />
+                          <!-- Bounding Box Overlay -->
+                          <svg class="bbox-overlay" id="bboxOverlayOriginal">
+                            <rect class="bbox-rect" id="bboxRectOriginal" />
+                            <text
+                              class="bbox-label"
+                              id="bboxLabelOriginal"
+                            ></text>
+                          </svg>
                         </div>
-                        <button id="startTrainingBtn" class="btn btn-primary" onclick="startTraining()">
-                            🚀 Modell nachtrainieren (Simulation)
+                        <span class="image-label">Original</span>
+                      </div>
+                      <div class="image-container" id="containerHeatmap">
+                        <div class="pan-zoom-wrapper" id="wrapperHeatmap">
+                          <img
+                            id="heatmapImage"
+                            alt="Heatmap"
+                            class="heatmap-progressive"
+                          />
+                          <!-- Bounding Box Overlay -->
+                          <svg class="bbox-overlay" id="bboxOverlayHeatmap">
+                            <rect class="bbox-rect" id="bboxRectHeatmap" />
+                          </svg>
+                        </div>
+                        <span class="image-label">Heatmap</span>
+                        <div id="analysisProgress" class="analysis-overlay">
+                          <div class="progress-text">Analyzing...</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Compact Feedback Section -->
+                  <div class="card feedback-card-compact">
+                    <div class="feedback-header">
+                      <h3>Correct?</h3>
+                      <div
+                        id="autoAcceptTimer"
+                        class="auto-accept-timer"
+                        style="display: none"
+                      >
+                        Auto-Accept in <span id="timerSeconds">5</span>s
+                      </div>
+                    </div>
+                    <div id="feedbackButtons" class="feedback-buttons-compact">
+                      <button
+                        class="btn btn-success btn-sm"
+                        onclick="submitFeedback(true)"
+                      >
+                        Yes
+                      </button>
+                      <button
+                        class="btn btn-danger btn-sm"
+                        onclick="showCorrectionDropdown()"
+                      >
+                        No
+                      </button>
+                    </div>
+
+                    <div
+                      id="correctionSection"
+                      class="correction-section"
+                      style="display: none"
+                    >
+                      <p>Correct class:</p>
+                      <div class="correction-inline">
+                        <select id="correctionSelect" class="form-select">
+                          <option value="Glioma">Glioma</option>
+                          <option value="Meningioma">Meningioma</option>
+                          <option value="No Tumor">No Tumor</option>
+                          <option value="Pituitary">Pituitary</option>
+                        </select>
+                        <button
+                          class="btn btn-primary btn-sm"
+                          onclick="submitFeedback(false)"
+                        >
+                          OK
                         </button>
+                      </div>
                     </div>
+                    <div
+                      id="feedbackThankYou"
+                      style="display: none"
+                      class="success-message"
+                    >
+                      ✓ Feedback saved
+                    </div>
+                  </div>
 
-                    <div class="card">
-                        <h3>Über</h3>
-                        <p>Brain Tumor Classifier v2.0</p>
-                        <p>Entwickelt für Forschungszwecke.</p>
-                        <p>Device: <span id="deviceInfo">Loading...</span></p>
-                    </div>
+                  <!-- Reload Button at Bottom -->
+                  <button
+                    id="reloadRandomBtn"
+                    class="btn btn-primary btn-reload"
+                  >
+                    <svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <path
+                        d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"
+                      />
+                    </svg>
+                    Next Image
+                  </button>
                 </div>
+              </div>
+
+              <div class="model-info-footer">
+                <span class="badge"
+                  >Model: <span id="modelVersionDisplay">v1</span></span
+                >
+              </div>
+            </section>
+
+            <!-- Loading Spinner -->
+            <div id="loading" class="loading" style="display: none">
+              <div class="spinner"></div>
+              <p>Analyzing MRI image...</p>
             </div>
 
-        </main>
+            <!-- Error Message -->
+            <div id="error" class="error" style="display: none"></div>
+          </div>
+        </div>
+
+        <!-- View: History -->
+        <div id="view-history" class="view-section">
+          <div class="container">
+            <h2>🕒 History</h2>
+            <div id="historyList" class="history-list">
+              <p class="text-muted">No analyses in this session yet.</p>
+            </div>
+          </div>
+        </div>
+
+
+
+        <!-- View: Settings -->
+        <div id="view-settings" class="view-section">
+          <div class="container">
+            <h2>Settings & Training</h2>
+
+            <div class="card mb-4">
+              <h3>Active Learning</h3>
+              <p>Retrain the model with your collected feedback.</p>
+
+              <div
+                id="trainingProgressContainer"
+                style="display: none; margin-top: 1rem"
+              >
+                <div class="progress-wrapper">
+                  <div
+                    id="trainingProgressBar"
+                    class="progress-bar"
+                    style="width: 0%"
+                  ></div>
+                </div>
+                <p id="trainingStatusText" class="text-muted small mt-2">
+                  Initializing...
+                </p>
+              </div>
+
+              <div class="alert alert-info" id="trainingAlert">
+                <strong>Status:</strong> <span id="trainingStatus">Ready</span>
+              </div>
+              <button
+                id="startTrainingBtn"
+                class="btn btn-primary"
+                onclick="startTraining()"
+              >
+                Retrain Model (Simulation)
+              </button>
+            </div>
+
+            <div class="card">
+              <h3>About</h3>
+              <p>Brain Tumor Classifier v2.0</p>
+              <p>Developed for research purposes.</p>
+              <p>Device: <span id="deviceInfo">Loading...</span></p>
+            </div>
+          </div>
+        </div>
+      </main>
     </div>
 
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
-</body>
+  </body>
 </html>

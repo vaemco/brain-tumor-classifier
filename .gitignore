@@ -38,8 +38,7 @@ venv.bak/
 *.pth
 *.pt
 *.onnx
-# Keep only the final model
-!models/brain_tumor_resnet18_final.pt
+# Models should not be committed - use Git LFS or external storage if needed
 
 # Data - DO NOT COMMIT
 data/
@@ -115,3 +114,4 @@ docs/_templates/
 # Backup files
 *.bak
 *.backup
+readmeeratz.md

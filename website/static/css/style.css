@@ -1,10 +1,10 @@
-/* 
- * Medical Brain Tumor Classifier Styles 
+/*
+ * Medical Brain Tumor Classifier Styles
  * =====================================
- * 
+ *
  * This file defines the visual appearance of the application.
  * It uses CSS Variables (Custom Properties) for easy theming.
- * 
+ *
  * How to Modify:
  * - Change Colors: Edit the `:root` variables (e.g., --primary, --bg) to change the global color scheme.
  * - Dark Mode: Edit the `[data-theme="dark"]` block to adjust the dark mode appearance.
@@ -20,14 +20,14 @@
     --success: #10b981;       /* Emerald */
     --danger: #ef4444;        /* Red */
     --warning: #f59e0b;       /* Amber */
-    
+
     /* Clean Light Theme */
     --bg: #f8fafc;            /* Slate 50 */
     --bg-card: #ffffff;       /* White */
     --text: #0f172a;          /* Slate 900 */
     --text-muted: #64748b;    /* Slate 500 */
     --border: #e2e8f0;        /* Slate 200 */
-    
+
     /* Sidebar */
     --sidebar-bg: #1e293b;    /* Slate 800 */
     --sidebar-text: #f1f5f9;  /* Slate 100 */
@@ -37,6 +37,12 @@
     --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
     --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
     --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+
+    /* Component Colors */
+    --bg-secondary: #f1f5f9;
+    --bg-feedback: #f0f9ff;
+    --border-feedback: #bae6fd;
+    --bg-hover: #f0f9ff;
 }
 
 [data-theme="dark"] {
@@ -45,9 +51,15 @@
     --text: #f1f5f9;          /* Slate 100 */
     --text-muted: #94a3b8;    /* Slate 400 */
     --border: #334155;        /* Slate 700 */
-    
+
     --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
     --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.3), 0 2px 4px -2px rgb(0 0 0 / 0.3);
+
+    /* Component Colors Dark */
+    --bg-secondary: #334155;
+    --bg-feedback: #1e293b;
+    --border-feedback: #475569;
+    --bg-hover: #334155;
 }
 
 * {
@@ -267,7 +279,7 @@ body {
 
 .dropzone:hover {
     border-color: var(--primary);
-    background: #f0f9ff;
+    background: var(--bg-hover);
     transform: translateY(-2px);
     box-shadow: var(--shadow);
 }
@@ -373,7 +385,7 @@ body {
     text-align: center;
     padding: 1rem;
     margin-bottom: 1rem;
-    background: #f8fafc;
+    background: var(--bg-secondary);
     border-radius: 0.5rem;
     border: 1px solid var(--border);
 }
@@ -397,7 +409,7 @@ body {
 }
 
 .filename-badge {
-    background: #f1f5f9;
+    background: var(--bg-secondary);
     color: var(--text-muted);
     padding: 0.25rem 0.75rem;
     border-radius: 0.25rem;
@@ -422,7 +434,7 @@ body {
     position: relative;
     border-radius: 0.5rem;
     overflow: hidden;
-    background: #f1f5f9;
+    background: var(--bg-secondary);
     aspect-ratio: 1;
     cursor: grab;
 }
@@ -547,8 +559,8 @@ body {
 
 /* Compact Feedback Card */
 .feedback-card-compact {
-    background: #f0f9ff;
-    border-color: #bae6fd;
+    background: var(--bg-feedback);
+    border-color: var(--border-feedback);
     padding: 1rem;
 }
 
@@ -707,7 +719,7 @@ body {
     justify-content: center;
     gap: 2rem;
     margin-bottom: 1.5rem;
-    background: white;
+    background: var(--bg-card);
     padding: 1rem;
     border-radius: 0.5rem;
     box-shadow: var(--shadow-sm);
@@ -865,21 +877,21 @@ body {
     .sidebar, .button-group, .upload-section, .feedback-card-compact, .btn-reload, .zoom-controls {
         display: none !important;
     }
-    
+
     .main-content {
         margin-left: 0;
         padding: 0;
     }
-    
+
     .app-layout {
         display: block;
     }
-    
+
     .card {
         box-shadow: none;
         border: 1px solid #ccc;
     }
-    
+
     body {
         background: white;
     }
@@ -1033,22 +1045,22 @@ body {
     .app-layout {
         flex-direction: column;
     }
-    
+
     .sidebar {
         width: 100%;
         height: auto;
         position: relative;
         padding: 1rem;
     }
-    
+
     .main-content {
         margin-left: 0;
     }
-    
+
     .compact-grid {
         grid-template-columns: 1fr;
     }
-    
+
     .image-comparison {
         grid-template-columns: 1fr;
     }
