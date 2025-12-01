@@ -45,7 +45,7 @@ This project demonstrates an end-to-end machine learning pipeline for medical im
 
 ```bash
 git clone https://github.com/vaemco/brain-tumor-classifier.git
-cd data_brain_tumor
+cd brain-tumor-classifier
 ```
 
 ### 2. Create and activate the conda environment
