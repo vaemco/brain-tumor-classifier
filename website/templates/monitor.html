@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>Brain Tumor Monitor v2.1</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.iife.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
+            background: linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 100%);
+            color: #e0e0e0;
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: rgba(255,255,255,0.02);
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .header h1 {
+            font-size: 28px;
+            font-weight: 300;
+            letter-spacing: 2px;
+            background: linear-gradient(90deg, #fff 0%, #888 100%);
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: #888;
+        }
+
+        .pulse {
+            width: 8px;
+            height: 8px;
+            background: #2ecc71;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(52, 152, 219, 0.3);
+        }
+
+        .btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(52, 152, 219, 0.4); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+        .grid {
+            display: grid;
+            gap: 20px;
+            margin-bottom: 25px;
+        }
+
+        .grid-4 { grid-template-columns: repeat(4, 1fr); }
+        .grid-3 { grid-template-columns: repeat(3, 1fr); }
+        .grid-2 { grid-template-columns: 2fr 1fr; }
+
+        .card {
+            background: rgba(255,255,255,0.03);
+            border-radius: 16px;
+            padding: 24px;
+            border: 1px solid rgba(255,255,255,0.08);
+            backdrop-filter: blur(10px);
+            transition: all 0.3s;
+        }
+
+        .card:hover { border-color: rgba(255,255,255,0.15); }
+
+        .card-title {
+            font-size: 11px;
+            text-transform: uppercase;
+            color: #888;
+            letter-spacing: 1px;
+            margin-bottom: 12px;
+        }
+
+        .card-value {
+            font-size: 32px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .card-subtitle {
+            font-size: 12px;
+            color: #666;
+        }
+
+        /* Model Cards with Gradient Fill */
+        .model-card {
+            position: relative;
+            overflow: hidden;
+            min-height: 280px;
+        }
+
+        .model-card::before {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 0%;
+            transition: height 0.5s ease;
+            opacity: 0.15;
+        }
+
+        .model-card.resnet::before { background: linear-gradient(0deg, #3498db 0%, transparent 100%); }
+        .model-card.effnet::before { background: linear-gradient(0deg, #2ecc71 0%, transparent 100%); }
+        .model-card.dense::before { background: linear-gradient(0deg, #e74c3c 0%, transparent 100%); }
+
+        .model-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .model-name {
+            font-size: 14px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .model-badge {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: 600;
+        }
+
+        .badge-resnet { background: rgba(52, 152, 219, 0.2); color: #3498db; }
+        .badge-effnet { background: rgba(46, 204, 113, 0.2); color: #2ecc71; }
+        .badge-dense { background: rgba(231, 76, 60, 0.2); color: #e74c3c; }
+
+        .metric-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .metric-row:last-child { border-bottom: none; }
+
+        .metric-label { font-size: 11px; color: #888; text-transform: uppercase; }
+        .metric-value { font-size: 20px; font-weight: 600; }
+
+        .chart-mini {
+            width: 100%;
+            height: 100px;
+            margin-top: 15px;
+        }
+
+        /* Class Distribution */
+        .distribution-bar {
+            background: rgba(255,255,255,0.05);
+            height: 40px;
+            border-radius: 8px;
+            overflow: hidden;
+            display: flex;
+            margin-top: 10px;
+        }
+
+        .dist-segment {
+            height: 100%;
+            transition: width 0.5s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-weight: 600;
+        }
+
+        .seg-glioma { background: #3498db; }
+        .seg-meningioma { background: #9b59b6; }
+        .seg-pituitary { background: #e74c3c; }
+        .seg-no-tumor { background: #2ecc71; }
+
+        /* Details Panel */
+        .details-panel {
+            background: rgba(255,255,255,0.02);
+            border-radius: 16px;
+            border: 1px solid rgba(255,255,255,0.08);
+            overflow: hidden;
+            margin-top: 20px;
+        }
+
+        .details-header {
+            padding: 16px 24px;
+            background: rgba(255,255,255,0.03);
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.2s;
+        }
+
+        .details-header:hover { background: rgba(255,255,255,0.05); }
+
+        .details-content {
+            padding: 24px;
+            display: none;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .details-panel.active .details-content { display: grid; }
+
+        .img-wrapper {
+            text-align: center;
+            background: rgba(0,0,0,0.3);
+            padding: 15px;
+            border-radius: 12px;
+        }
+
+        .img-wrapper img {
+            max-width: 100%;
+            border-radius: 8px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+        }
+
+        .img-label {
+            margin-top: 10px;
+            font-size: 11px;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .uplot { background: transparent !important; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div>
+            <h1>BRAIN TUMOR MONITOR</h1>
+            <div class="status-indicator">
+                <div class="pulse"></div>
+                System Active • Refresh: 500ms
+            </div>
+        </div>
+        <button class="btn" onclick="triggerTest()" id="test-btn">⚡ TRIGGER TEST</button>
+    </div>
+
+    <!-- Stats Overview -->
+    <div class="grid grid-4">
+        <div class="card">
+            <div class="card-title">Total Predictions</div>
+            <div class="card-value" id="stat-total">0</div>
+            <div class="card-subtitle">All models combined</div>
+        </div>
+        <div class="card">
+            <div class="card-title">Consensus Rate</div>
+            <div class="card-value" id="stat-consensus">0%</div>
+            <div class="card-subtitle">Full agreement</div>
+        </div>
+        <div class="card">
+            <div class="card-title">Avg Confidence</div>
+            <div class="card-value" id="stat-conf">0.0%</div>
+            <div class="card-subtitle">Across all predictions</div>
+        </div>
+        <div class="card">
+            <div class="card-title">Uptime</div>
+            <div class="card-value" id="stat-uptime">00:00:00</div>
+            <div class="card-subtitle">System runtime</div>
+        </div>
+    </div>
+
+    <!-- Model Performance Cards -->
+    <div class="grid grid-3">
+        <div class="card model-card resnet" id="card-resnet">
+            <div class="model-header">
+                <span class="model-name">ResNet18</span>
+                <span class="model-badge badge-resnet">CNN</span>
+            </div>
+            <div class="metric-row">
+                <span class="metric-label">Confidence</span>
+                <span class="metric-value" id="resnet-conf">0%</span>
+            </div>
+            <div class="metric-row">
+                <span class="metric-label">Predictions</span>
+                <span class="metric-value" id="resnet-count">0</span>
+            </div>
+            <div class="metric-row">
+                <span class="metric-label">Avg Latency</span>
+                <span class="metric-value" id="resnet-latency">0ms</span>
+            </div>
+            <div id="chart-resnet" class="chart-mini"></div>
+        </div>
+
+        <div class="card model-card effnet" id="card-effnet">
+            <div class="model-header">
+                <span class="model-name">EfficientNet</span>
+                <span class="model-badge badge-effnet">B0</span>
+            </div>
+            <div class="metric-row">
+                <span class="metric-label">Confidence</span>
+                <span class="metric-value" id="effnet-conf">0%</span>
+            </div>
+            <div class="metric-row">
+                <span class="metric-label">Predictions</span>
+                <span class="metric-value" id="effnet-count">0</span>
+            </div>
+            <div class="metric-row">
+                <span class="metric-label">Avg Latency</span>
+                <span class="metric-value" id="effnet-latency">0ms</span>
+            </div>
+            <div id="chart-effnet" class="chart-mini"></div>
+        </div>
+
+        <div class="card model-card dense" id="card-dense">
+            <div class="model-header">
+                <span class="model-name">DenseNet121</span>
+                <span class="model-badge badge-dense">121</span>
+            </div>
+            <div class="metric-row">
+                <span class="metric-label">Confidence</span>
+                <span class="metric-value" id="dense-conf">0%</span>
+            </div>
+            <div class="metric-row">
+                <span class="metric-label">Predictions</span>
+                <span class="metric-value" id="dense-count">0</span>
+            </div>
+            <div class="metric-row">
+                <span class="metric-label">Avg Latency</span>
+                <span class="metric-value" id="dense-latency">0ms</span>
+            </div>
+            <div id="chart-dense" class="chart-mini"></div>
+        </div>
+    </div>
+
+    <!-- Class Distribution -->
+    <div class="card">
+        <div class="card-title">Class Distribution</div>
+        <div class="distribution-bar" id="dist-bar"></div>
+        <div style="display: flex; justify-content: space-between; margin-top: 12px; font-size: 11px;">
+            <span style="color: #3498db;">● Glioma</span>
+            <span style="color: #9b59b6;">● Meningioma</span>
+            <span style="color: #e74c3c;">● Pituitary</span>
+            <span style="color: #2ecc71;">● No Tumor</span>
+        </div>
+    </div>
+
+    <!-- Recent Predictions History -->
+    <div class="card">
+        <div class="card-title">Recent Predictions (Last 10)</div>
+        <p style="font-size: 11px; color: #666; margin-bottom: 15px;">Live history of all test predictions from main page and dashboard</p>
+        <div id="recent-history" style="display: flex; flex-direction: column; gap: 8px;">
+            <div style="color: #666; font-size: 12px; text-align: center; padding: 20px;">
+                No predictions yet - click "TRIGGER TEST" to start
+            </div>
+        </div>
+    </div>
+
+    <!-- Details Panel -->
+    <div class="details-panel" id="details">
+        <div class="details-header" onclick="toggleDetails()">
+            <span style="font-weight: 600;">🔍 Latest Prediction Details</span>
+            <span id="details-arrow">▼</span>
+        </div>
+        <div class="details-content">
+            <div class="img-wrapper">
+                <img id="detail-original" src="" alt="Original MRI">
+                <div class="img-label">Original MRI</div>
+            </div>
+            <div class="img-wrapper">
+                <img id="detail-heatmap" src="" alt="Grad-CAM">
+                <div class="img-label">Grad-CAM Attention Map</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const REFRESH_RATE = 500;
+        const MAX_POINTS = 30;
+        let charts = {};
+
+        // Initialize mini charts for each model
+        function initChart(elemId, color) {
+            const data = [[], []];
+            const now = Date.now() / 1000;
+            for (let i = MAX_POINTS; i > 0; i--) {
+                data[0].push(now - i);
+                data[1].push(0);
+            }
+
+            const opts = {
+                width: 300,
+                height: 100,
+                padding: [8, 0, 0, 0],
+                series: [
+                    {},
+                    {
+                        stroke: color,
+                        width: 2,
+                        fill: color,
+                        fillTo: 0,
+                        alpha: 0.3,
+                        points: { show: false }
+                    }
+                ],
+                scales: {
+                    x: { time: false },
+                    y: { range: [0, 1] }
+                },
+                axes: [
+                    { show: false },
+                    { show: false }
+                ],
+                select: { show: false },
+                cursor: { show: false }
+            };
+
+            const el = document.getElementById(elemId);
+            opts.width = el.clientWidth;
+            return { chart: new uPlot(opts, data, el), data };
+        }
+
+        function toggleDetails() {
+            document.getElementById('details').classList.toggle('active');
+            const arrow = document.getElementById('details-arrow');
+            arrow.textContent = document.getElementById('details').classList.contains('active') ? '▲' : '▼';
+        }
+
+        function triggerTest() {
+            const btn = document.getElementById('test-btn');
+            btn.disabled = true;
+            btn.textContent = '⏳ Running...';
+
+            fetch('/api/random-test')
+                .then(res => res.json())
+                .then(data => {
+                    if(data.original) document.getElementById('detail-original').src = 'data:image/jpeg;base64,' + data.original;
+                    if(data.gradcam) document.getElementById('detail-heatmap').src = 'data:image/jpeg;base64,' + data.gradcam;
+
+                    const panel = document.getElementById('details');
+                    if(!panel.classList.contains('active')) toggleDetails();
+
+                    btn.textContent = '⚡ TRIGGER TEST';
+                    btn.disabled = false;
+                    updateDashboard();
+                })
+                .catch(err => {
+                    console.error(err);
+                    btn.textContent = '❌ Error';
+                    setTimeout(() => {
+                        btn.textContent = '⚡ TRIGGER TEST';
+                        btn.disabled = false;
+                    }, 2000);
+                });
+        }
+
+        function formatTime(seconds) {
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            const s = Math.floor(seconds % 60);
+            return `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+        }
+
+        function updateDashboard() {
+            fetch('/api/metrics')
+                .then(res => res.json())
+                .then(m => {
+                    // Global stats
+                    document.getElementById('stat-total').textContent = m.predictions.total;
+                    document.getElementById('stat-conf').textContent = (m.average_confidence * 100).toFixed(1) + '%';
+                    document.getElementById('stat-uptime').textContent = formatTime(m.uptime_seconds);
+
+                    const totalC = m.consensus.full_agreement + m.consensus.majority + m.consensus.low_consensus;
+                    const rate = totalC > 0 ? ((m.consensus.full_agreement / totalC) * 100).toFixed(0) : 0;
+                    document.getElementById('stat-consensus').textContent = rate + '%';
+
+                    // Model-specific updates
+                    const models = [
+                        { key: 'resnet18', chart: 'resnet', color: '#3498db' },
+                        { key: 'efficientnet', chart: 'effnet', color: '#2ecc71' },
+                        { key: 'densenet', chart: 'dense', color: '#e74c3c' }
+                    ];
+
+                    models.forEach(({ key, chart, color }) => {
+                        const hist = m.confidence_history[key] || [];
+                        const times = m.inference_times[key] || [];
+                        const count = m.predictions[key] ||0;
+
+                        console.log(`[DEBUG] Model ${key}: count=${count}, hist_len=${hist.length}, times_len=${times.length}`);
+
+                        const lastConf = hist.length > 0 ? hist[hist.length - 1] : 0;
+                        const avgLatency = times.length > 0 ? (times.reduce((a,b) => a + b, 0) / times.length).toFixed(1) : 0;
+
+                        document.getElementById(`${chart}-conf`).textContent = (lastConf * 100).toFixed(1) + '%';
+                        document.getElementById(`${chart}-count`).textContent = count;
+                        document.getElementById(`${chart}-latency`).textContent = avgLatency + 'ms';
+
+                        // Update mini chart
+                        if (charts[chart]) {
+                            const now = Date.now() / 1000;
+                            charts[chart].data[0].push(now);
+                            charts[chart].data[1].push(lastConf);
+
+                            if (charts[chart].data[0].length > MAX_POINTS) {
+                                charts[chart].data[0].shift();
+                                charts[chart].data[1].shift();
+                            }
+
+                            charts[chart].chart.setData(charts[chart].data);
+                        }
+
+                        // Filling effect (CSS handles ::before via --fill-height variable)
+                        const fillPercent = (lastConf * 100);
+                        const cardEl = document.getElementById(`card-${chart}`);
+                        if (cardEl) {
+                            cardEl.style.setProperty('--fill-height', fillPercent + '%');
+                        }
+                    });
+
+                    // Class distribution
+                    const dist = m.class_distribution;
+                    const total = Object.values(dist).reduce((a, b) => a + b, 0);
+                    if (total > 0) {
+                        const html = `
+                            <div class="dist-segment seg-glioma" style="width: ${(dist.glioma / total * 100)}%">${dist.glioma || ''}</div>
+                            <div class="dist-segment seg-meningioma" style="width: ${(dist.meningioma / total * 100)}%">${dist.meningioma || ''}</div>
+                            <div class="dist-segment seg-pituitary" style="width: ${(dist.pituitary / total * 100)}%">${dist.pituitary || ''}</div>
+                            <div class="dist-segment seg-no-tumor" style="width: ${(dist.no_tumor / total * 100)}%">${dist.no_tumor || ''}</div>
+                        `;
+                        document.getElementById('dist-bar').innerHTML = html;
+                    }
+
+                    // Update Recent History
+                    const historyEl = document.getElementById('recent-history');
+                    if (m.recent_predictions && m.recent_predictions.length > 0) {
+                        historyEl.innerHTML = m.recent_predictions.slice(-10).reverse().map(p => {
+                            const time = new Date(p.timestamp * 1000).toLocaleTimeString('de-DE');
+                            const confColor = p.confidence > 0.8 ? '#2ecc71' : p.confidence > 0.6 ? '#f1c40f' : '#e74c3c';
+                            return `
+                                <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: rgba(255,255,255,0.02); border-radius: 8px; border-left: 3px solid ${confColor};">
+                                    <div style="flex: 1;">
+                                        <div style="font-size: 13px; font-weight: 600;">${p.prediction}</div>
+                                        <div style="font-size: 10px; color: #888;">${time}</div>
+                                    </div>
+                                    <div style="text-align: right;">
+                                        <div style="font-size: 14px; font-weight: 600; color: ${confColor};">${(p.confidence * 100).toFixed(1)}%</div>
+                                        <div style="font-size: 9px; color: #666;">${p.consensus_status}</div>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('');
+                    }
+
+                    // Auto-sync images from main page (bidirectional sync)
+                    if (m.latest_images && m.latest_images.original && m.latest_images.gradcam) {
+                        const origImg = document.getElementById('detail-original');
+                        const heatImg = document.getElementById('detail-heatmap');
+
+                        // Only update if there's new data (prevents flickering)
+                        const newOrigSrc = 'data:image/jpeg;base64,' + m.latest_images.original;
+                        const newHeatSrc = 'data:image/jpeg;base64,' + m.latest_images.gradcam;
+
+                        if (origImg.src !== newOrigSrc) {
+                            origImg.src = newOrigSrc;
+                            heatImg.src = newHeatSrc;
+                        }
+                    }
+                })
+                .catch(err => console.error(err));
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            charts.resnet = initChart('chart-resnet', '#3498db');
+            charts.effnet = initChart('chart-effnet', '#2ecc71');
+            charts.dense = initChart('chart-dense', '#e74c3c');
+
+            setInterval(updateDashboard, REFRESH_RATE);
+            updateDashboard();
+        });
+    </script>
+</body>
+</html>

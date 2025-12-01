@@ -90,6 +90,47 @@ else:
     print("⚠ Using CPU", flush=True)
 
 
+# Global metrics tracking for monitoring dashboard
+metrics = {
+    "predictions": {
+        "total": 0,
+        "resnet18": 0,
+        "efficientnet": 0,
+        "densenet": 0,
+    },
+    "inference_times": {
+        "resnet18": [],
+        "efficientnet": [],
+        "densenet": [],
+    },
+    "confidence_scores": [],
+    "confidence_history": {
+        "resnet18": [],
+        "efficientnet": [],
+        "densenet": [],
+    },
+    "consensus": {
+        "full_agreement": 0,
+        "majority": 0,
+        "low_consensus": 0,
+    },
+    "class_distribution": {
+        "glioma": 0,
+        "meningioma": 0,
+        "pituitary": 0,
+        "no_tumor": 0,
+    },
+    "recent_predictions": [],  # Last 20 predictions
+    "latest_images": {
+        "original": None,
+        "gradcam": None,
+        "timestamp": None,
+    },
+    "start_time": time.time(),
+}
+
+
+
 # Load Models
 def load_resnet18():
     """Load ResNet18 model"""
@@ -270,6 +311,13 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/monitor")
+def monitor():
+    """Serve the monitoring dashboard"""
+    return render_template("monitor.html")
+
+
+
 @app.route("/api/random-test", methods=["GET"])
 def random_test():
     """Get random test image and prediction"""
@@ -306,10 +354,74 @@ def random_test():
 
         image_tensor, image_pil = preprocess_image(image_bytes)
 
-        # Make prediction
-        with torch.no_grad():
-            output = model(image_tensor)
-            probabilities = F.softmax(output, dim=1).cpu().numpy()[0]
+        # --- REAL Multi-Model Consensus ---
+        # Run prediction with all available models
+        model_predictions = []
+
+        for model_name, loaded_model in models_dict.items():
+            start_t = time.time()
+            with torch.no_grad():
+                output = loaded_model(image_tensor)
+                probs = F.softmax(output, dim=1).cpu().numpy()[0]
+            end_t = time.time()
+            inf_time = (end_t - start_t) * 1000  # ms
+
+            top_idx = probs.argmax()
+            model_predictions.append(
+                {
+                    "name": model_name.upper().replace("_", "-"),
+                    "prediction": CLASSES[top_idx],
+                    "confidence": float(probs[top_idx]),
+                    "probabilities": probs,
+                    "inference_time": inf_time,
+                }
+            )
+
+        # Determine Consensus via Majority Voting
+        votes = [pred["prediction"] for pred in model_predictions]
+        winner = max(set(votes), key=votes.count)
+        vote_count = votes.count(winner)
+
+        # Calculate average confidence only from models that voted for the winner
+        winner_confidences = [
+            p["confidence"] for p in model_predictions if p["prediction"] == winner
+        ]
+        avg_confidence = np.mean(winner_confidences) if winner_confidences else 0.0
+
+        # Determine consensus status
+        if vote_count == len(models_dict):
+            status = "High Consensus" if vote_count >= 3 else "Full Agreement"
+        elif vote_count > len(models_dict) // 2:
+            status = "Medium Consensus"
+        else:
+            status = "Low Consensus"
+
+        consensus_data = {
+            "models": [
+                {
+                    "name": p["name"],
+                    "prediction": p["prediction"],
+                    "confidence": p["confidence"],
+                }
+                for p in model_predictions
+            ],
+            "result": {
+                "winner": winner,
+                "score": f"{vote_count}/{len(models_dict)}",
+                "status": status,
+                "avg_confidence": float(avg_confidence),
+            },
+        }
+
+        # Use the consensus winner as the top prediction
+        top_pred_class = winner
+        top_pred_prob = avg_confidence
+
+        # Get probabilities from ResNet18 (or first model) for backward compatibility
+        probabilities = next(
+            (p["probabilities"] for p in model_predictions if "RESNET18" in p["name"]),
+            model_predictions[0]["probabilities"]
+        )
 
         # Generate Grad-CAM with bounding box (explicitly pass the model)
         heatmap, bbox = generate_gradcam(image_tensor, image_pil, model_for_cam=model)
@@ -319,6 +431,60 @@ def random_test():
         original_resized = np.array(image_pil.resize((224, 224)))
         original_b64 = image_to_base64(original_resized)
 
+        # --- Track Metrics for Monitoring Dashboard ---
+        metrics["predictions"]["total"] += 1
+
+        # Track per-model inference times and counts
+        for pred in model_predictions:
+            model_key = pred["name"].lower().replace("-", "")
+            if model_key in metrics["predictions"]:
+                metrics["predictions"][model_key] += 1
+
+            # Track per-model confidence history
+            if model_key in metrics["confidence_history"]:
+                metrics["confidence_history"][model_key].append(float(pred["confidence"]))
+                if len(metrics["confidence_history"][model_key]) > 100:
+                    metrics["confidence_history"][model_key] = metrics["confidence_history"][model_key][-100:]
+
+            # Track inference times
+            if model_key in metrics["inference_times"]:
+                metrics["inference_times"][model_key].append(pred["inference_time"])
+                if len(metrics["inference_times"][model_key]) > 100:
+                    metrics["inference_times"][model_key] = metrics["inference_times"][model_key][-100:]
+
+        # Track class distribution
+        class_key = top_pred_class.lower().replace(" ", "_")
+        if class_key in metrics["class_distribution"]:
+            metrics["class_distribution"][class_key] += 1
+
+        # Track confidence
+        metrics["confidence_scores"].append(float(avg_confidence))
+        if len(metrics["confidence_scores"]) > 100:  # Keep last 100
+            metrics["confidence_scores"] = metrics["confidence_scores"][-100:]
+
+        # Track consensus
+        if vote_count == len(models_dict):
+            metrics["consensus"]["full_agreement"] += 1
+        elif vote_count > len(models_dict) // 2:
+            metrics["consensus"]["majority"] += 1
+        else:
+            metrics["consensus"]["low_consensus"] += 1
+
+        # Track recent predictions
+        metrics["recent_predictions"].append({
+            "timestamp": time.time(),
+            "prediction": top_pred_class,
+            "confidence": float(avg_confidence),
+            "consensus_status": status,
+        })
+        if len(metrics["recent_predictions"]) > 20:  # Keep last 20
+            metrics["recent_predictions"] = metrics["recent_predictions"][-20:]
+
+        # Store latest images for bidirectional sync
+        metrics["latest_images"]["original"] = original_b64
+        metrics["latest_images"]["gradcam"] = heatmap_b64
+        metrics["latest_images"]["timestamp"] = time.time()
+
         # Prepare results
         results = {
             "filename": image_path.name,
@@ -327,13 +493,14 @@ def random_test():
                 for i in range(len(CLASSES))
             ],
             "top_prediction": {
-                "class": CLASSES[probabilities.argmax()],
-                "probability": float(probabilities.max()),
+                "class": top_pred_class,
+                "probability": top_pred_prob,
             },
             "gradcam": heatmap_b64,
             "original": original_b64,
             "bbox": bbox,  # Add bounding box data
             "model_version": MODEL_VERSION,
+            "consensus": consensus_data,
         }
 
         return jsonify(results)
@@ -388,9 +555,12 @@ def predict_upload():
         model_predictions = []
 
         for model_name, loaded_model in models_dict.items():
+            start_t = time.time()
             with torch.no_grad():
                 output = loaded_model(image_tensor)
                 probs = F.softmax(output, dim=1).cpu().numpy()[0]
+            end_t = time.time()
+            inf_time = (end_t - start_t) * 1000  # ms
 
             top_idx = probs.argmax()
             model_predictions.append(
@@ -399,6 +569,7 @@ def predict_upload():
                     "prediction": CLASSES[top_idx],
                     "confidence": float(probs[top_idx]),
                     "probabilities": probs,
+                    "inference_time": inf_time,
                 }
             )
 
@@ -464,6 +635,61 @@ def predict_upload():
                 "image": "/static/img/placeholder_brain.png",
             },
         ]
+
+        # --- Track Metrics for Monitoring Dashboard ---
+        metrics["predictions"]["total"] += 1
+
+        # Track per-model inference times and counts
+        import time as time_module
+        for pred in model_predictions:
+            model_key = pred["name"].lower().replace("-", "")
+            if model_key in metrics["predictions"]:
+                metrics["predictions"][model_key] += 1
+
+            # Track per-model confidence history
+            if model_key in metrics["confidence_history"]:
+                metrics["confidence_history"][model_key].append(float(pred["confidence"]))
+                if len(metrics["confidence_history"][model_key]) > 100:
+                    metrics["confidence_history"][model_key] = metrics["confidence_history"][model_key][-100:]
+
+            # Track inference times
+            if model_key in metrics["inference_times"]:
+                metrics["inference_times"][model_key].append(pred["inference_time"])
+                if len(metrics["inference_times"][model_key]) > 100:
+                    metrics["inference_times"][model_key] = metrics["inference_times"][model_key][-100:]
+
+        # Track class distribution
+        class_key = top_pred_class.lower().replace(" ", "_")
+        if class_key in metrics["class_distribution"]:
+            metrics["class_distribution"][class_key] += 1
+
+        # Track confidence
+        metrics["confidence_scores"].append(float(avg_confidence))
+        if len(metrics["confidence_scores"]) > 100:  # Keep last 100
+            metrics["confidence_scores"] = metrics["confidence_scores"][-100:]
+
+        # Track consensus
+        if vote_count == len(models_dict):
+            metrics["consensus"]["full_agreement"] += 1
+        elif vote_count > len(models_dict) // 2:
+            metrics["consensus"]["majority"] += 1
+        else:
+            metrics["consensus"]["low_consensus"] += 1
+
+        # Track recent predictions
+        metrics["recent_predictions"].append({
+            "timestamp": time.time(),
+            "prediction": top_pred_class,
+            "confidence": float(avg_confidence),
+            "consensus_status": status,
+        })
+        if len(metrics["recent_predictions"]) > 20:  # Keep last 20
+            metrics["recent_predictions"] = metrics["recent_predictions"][-20:]
+
+        # Store latest images for bidirectional sync
+        metrics["latest_images"]["original"] = original_b64
+        metrics["latest_images"]["gradcam"] = heatmap_b64
+        metrics["latest_images"]["timestamp"] = time.time()
 
         results = {
             "filename": filename,
@@ -545,6 +771,35 @@ def train_stream():
             yield f"data: {json.dumps(step)}\n\n"
 
     return flask.Response(generate(), mimetype="text/event-stream")
+
+
+@app.route("/api/metrics", methods=["GET"])
+def get_metrics():
+    """Get current metrics for monitoring dashboard"""
+    uptime = time.time() - metrics["start_time"]
+
+    # Calculate average confidence
+    avg_conf = (
+        np.mean(metrics["confidence_scores"])
+        if metrics["confidence_scores"]
+        else 0.0
+    )
+
+    return jsonify(
+        {
+            "uptime_seconds": uptime,
+            "predictions": metrics["predictions"],
+            "confidence_history": metrics["confidence_history"],
+            "inference_times": metrics["inference_times"],
+            "class_distribution": metrics["class_distribution"],
+            "average_confidence": float(avg_conf),
+            "confidence_scores": metrics["confidence_scores"][-20:],  # Last 20
+            "consensus": metrics["consensus"],
+            "recent_predictions": metrics["recent_predictions"],
+            "models_loaded": list(models_dict.keys()),
+            "latest_images": metrics["latest_images"],
+        }
+    )
 
 
 @app.route("/api/health", methods=["GET"])
