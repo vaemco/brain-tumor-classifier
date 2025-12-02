@@ -20,6 +20,12 @@ This project demonstrates an end-to-end machine learning pipeline for medical im
 - Automatic hardware acceleration (MPS/CUDA/CPU)
 - Training and evaluation scripts with comprehensive metrics
 
+### Example Prediction
+
+The system provides comprehensive predictions with class probabilities, Grad-CAM heatmaps, and bounding box visualizations to highlight regions of interest in the MRI scan.
+
+![Prediction Example](docs/images/prediction_example.png)
+
 ## Repository Structure
 
 ```
@@ -96,6 +102,12 @@ If your downloaded dataset is not pre-split, run the data preparation script:
 ```bash
 python scripts/prepare_data.py
 ```
+
+### Dataset Distribution
+
+The combined dataset contains 7,203 training images and 1,311 testing images across four classes. The distribution is relatively balanced with slight variations between classes.
+
+![Dataset Distribution](docs/images/dataset_distribution.png)
 
 ### 4. Model weights
 
@@ -188,6 +200,10 @@ This generates:
 
 ## Model Architecture
 
+The system employs a multi-model ensemble approach with three distinct CNN architectures, each contributing unique feature extraction capabilities for robust tumor classification.
+
+![Architecture Overview](docs/images/architecture_overview.png)
+
 ### Base Models
 
 - **ResNet18**: Transfer learning from ImageNet, fine-tuned with differential learning rates
@@ -202,6 +218,8 @@ The application uses majority voting across all available models:
 2. Majority vote determines the final class
 3. Average confidence is calculated from models voting for the winner
 4. Consensus status indicates agreement level (high/medium/low)
+
+![Multi-Model Consensus](docs/images/multi_model_consensus.png)
 
 ### Explainability
 
@@ -223,6 +241,12 @@ Model performance metrics are stored in `runs/` directory:
 - Training/validation loss and accuracy curves
 - Per-epoch metrics in JSON format
 - Confusion matrices and classification reports
+
+### Training Metrics
+
+The models demonstrate strong convergence during training with consistent validation accuracy. ResNet18 achieves approximately 95% test accuracy, while the ensemble approach further improves robustness.
+
+![Performance Metrics](docs/images/performance_metrics.png)
 
 ## Development
 
