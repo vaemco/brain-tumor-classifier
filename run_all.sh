@@ -27,7 +27,7 @@ trap cleanup INT TERM
 
 # Start Flask app in background
 echo "▶ Starting Flask Website..."
-python -m website.app &
+python3 -m website.app &
 FLASK_PID=$!
 sleep 2
 

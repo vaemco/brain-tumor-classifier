@@ -247,8 +247,8 @@ def generate_gradcam(image_tensor, image_pil, model_for_cam=None):
     visualization = show_cam_on_image(rgb_img, grayscale_cam, use_rgb=True)
 
     # Calculate precise bounding box from heatmap
-    # Use HIGHER threshold to focus on peak activation (75% instead of 50%)
-    threshold = grayscale_cam.max() * 0.75
+    # Use HIGHER threshold to focus on peak activation (85% instead of 75%)
+    threshold = grayscale_cam.max() * 0.85
     mask = grayscale_cam > threshold
 
     # Find bounding box coordinates
@@ -259,35 +259,31 @@ def generate_gradcam(image_tensor, image_pil, model_for_cam=None):
         y_min, y_max = np.where(rows)[0][[0, -1]]
         x_min, x_max = np.where(cols)[0][[0, -1]]
 
-        # Add minimal padding (5% instead of 10%)
+        # Minimal padding (2%)
         height, width = grayscale_cam.shape
-        padding_y = int((y_max - y_min) * 0.05)
-        padding_x = int((x_max - x_min) * 0.05)
+        padding_y = int((y_max - y_min) * 0.02)
+        padding_x = int((x_max - x_min) * 0.02)
 
         y_min = max(0, y_min - padding_y)
         y_max = min(height - 1, y_max + padding_y)
         x_min = max(0, x_min - padding_x)
         x_max = min(width - 1, x_max + padding_x)
 
-        # Ensure minimum box size (at least 10% of image)
-        min_size = int(height * 0.1)
-        if (y_max - y_min) < min_size:
-            center_y = (y_min + y_max) // 2
-            y_min = max(0, center_y - min_size // 2)
-            y_max = min(height - 1, center_y + min_size // 2)
-        if (x_max - x_min) < min_size:
-            center_x = (x_min + x_max) // 2
-            x_min = max(0, center_x - min_size // 2)
-            x_max = min(width - 1, center_x + min_size // 2)
+        # Calculate Box Area relative to image
+        box_area = (x_max - x_min) * (y_max - y_min)
+        img_area = width * height
 
-        # Convert to percentage for frontend (relative to 224x224)
-        bbox = {
-            "x": float(x_min / width * 100),
-            "y": float(y_min / height * 100),
-            "width": float((x_max - x_min) / width * 100),
-            "height": float((y_max - y_min) / height * 100),
-            "confidence": float(grayscale_cam.max()),
-        }
+        # Filter out if box is suspiciously large (>60%)
+        if box_area > 0.6 * img_area:
+             bbox = None
+        else:
+             bbox = {
+                "x": float(x_min / width * 100),
+                "y": float(y_min / height * 100),
+                "width": float((x_max - x_min) / width * 100),
+                "height": float((y_max - y_min) / height * 100),
+                "confidence": float(grayscale_cam.max()),
+            }
     else:
         # Fallback if no significant region found
         bbox = None
@@ -304,17 +300,17 @@ def image_to_base64(image_array):
     return base64.b64encode(buffer.getvalue()).decode("utf-8")
 
 
+# ... (Helper functions remain) ...
+
 # Routes
 @app.route("/")
 def index():
-    """Serve the main page"""
-    return render_template("index.html")
-
+    return render_template("monitor.html") # Redirect index to monitor as requested by user consolidation
 
 @app.route("/monitor")
 def monitor():
-    """Serve the monitoring dashboard"""
     return render_template("monitor.html")
+
 
 
 
@@ -377,24 +373,24 @@ def random_test():
                 }
             )
 
-        # Determine Consensus via Majority Voting
+        # Soft Voting: Average the probabilities
+        sum_probs = np.sum([p["probabilities"] for p in model_predictions], axis=0)
+        avg_probs = sum_probs / len(models_dict)
+
+        top_idx_ensemble = avg_probs.argmax()
+        winner = CLASSES[top_idx_ensemble]
+        avg_confidence = float(avg_probs[top_idx_ensemble])
+
+        # Consensus Status
         votes = [pred["prediction"] for pred in model_predictions]
-        winner = max(set(votes), key=votes.count)
         vote_count = votes.count(winner)
 
-        # Calculate average confidence only from models that voted for the winner
-        winner_confidences = [
-            p["confidence"] for p in model_predictions if p["prediction"] == winner
-        ]
-        avg_confidence = np.mean(winner_confidences) if winner_confidences else 0.0
-
-        # Determine consensus status
         if vote_count == len(models_dict):
-            status = "High Consensus" if vote_count >= 3 else "Full Agreement"
+            status = "Unanimous"
         elif vote_count > len(models_dict) // 2:
-            status = "Medium Consensus"
+            status = "Majority"
         else:
-            status = "Low Consensus"
+            status = "Ambiguous"
 
         consensus_data = {
             "models": [
@@ -409,11 +405,11 @@ def random_test():
                 "winner": winner,
                 "score": f"{vote_count}/{len(models_dict)}",
                 "status": status,
-                "avg_confidence": float(avg_confidence),
+                "avg_confidence": avg_confidence,
             },
         }
 
-        # Use the consensus winner as the top prediction
+        # Use the Ensemble result as the top prediction
         top_pred_class = winner
         top_pred_prob = avg_confidence
 
@@ -573,24 +569,24 @@ def predict_upload():
                 }
             )
 
-        # Determine Consensus via Majority Voting
+        # Soft Voting: Average the probabilities
+        sum_probs = np.sum([p["probabilities"] for p in model_predictions], axis=0)
+        avg_probs = sum_probs / len(models_dict)
+
+        top_idx_ensemble = avg_probs.argmax()
+        winner = CLASSES[top_idx_ensemble]
+        avg_confidence = float(avg_probs[top_idx_ensemble])
+
+        # Consensus Status
         votes = [pred["prediction"] for pred in model_predictions]
-        winner = max(set(votes), key=votes.count)
         vote_count = votes.count(winner)
 
-        # Calculate average confidence only from models that voted for the winner
-        winner_confidences = [
-            p["confidence"] for p in model_predictions if p["prediction"] == winner
-        ]
-        avg_confidence = np.mean(winner_confidences) if winner_confidences else 0.0
-
-        # Determine consensus status
         if vote_count == len(models_dict):
-            status = "High Consensus" if vote_count >= 3 else "Full Agreement"
+            status = "Unanimous"
         elif vote_count > len(models_dict) // 2:
-            status = "Medium Consensus"
+            status = "Majority"
         else:
-            status = "Low Consensus"
+            status = "Ambiguous"
 
         consensus_data = {
             "models": [
@@ -605,11 +601,11 @@ def predict_upload():
                 "winner": winner,
                 "score": f"{vote_count}/{len(models_dict)}",
                 "status": status,
-                "avg_confidence": float(avg_confidence),
+                "avg_confidence": avg_confidence,
             },
         }
 
-        # Use the consensus winner as the top prediction
+        # Use the Ensemble result as the top prediction
         top_pred_class = winner
         top_pred_prob = avg_confidence
 
