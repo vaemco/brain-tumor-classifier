@@ -114,3 +114,9 @@ docs/_templates/
 # Backup files
 *.bak
 *.backup
+
+# Temporary/Utility Scripts
+fix_training_notebooks.py
+verify_densenet.py
+notebooks/improved_early_stopping.py
+notebooks/improved_model_setup.py
