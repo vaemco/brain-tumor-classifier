@@ -66,6 +66,9 @@ website/static/uploads/*
 *.temp
 *.log
 
+# Local scratch space
+scratch/
+
 # OS
 .DS_Store
 .DS_Store?

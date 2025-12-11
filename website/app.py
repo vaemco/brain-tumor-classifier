@@ -29,7 +29,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from flask import Flask, jsonify, render_template, request
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 from pytorch_grad_cam import GradCAM
 from pytorch_grad_cam.utils.image import show_cam_on_image
 from torchvision import models
@@ -40,7 +40,11 @@ from website.dataset import val_tf
 print("Flask app starting...", flush=True)
 
 app = Flask(__name__)
-app.config["UPLOAD_FOLDER"] = Path("website/static/uploads")
+# Directories
+APP_DIR = Path(__file__).resolve().parent
+BASE_DIR = APP_DIR.parent
+
+app.config["UPLOAD_FOLDER"] = APP_DIR / "static" / "uploads"
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16MB max
 
 # Ensure upload folder exists
@@ -50,14 +54,16 @@ CLASSES = ["Glioma", "Meningioma", "No Tumor", "Pituitary"]
 
 # Model Paths
 MODEL_PATHS = {
-    "resnet18": Path("models/brain_tumor_resnet18_v2_trained.pt"),
-    "efficientnet": Path("models/brain_tumor_efficientnet_b0_trained.pt"),
-    "densenet": Path("models/brain_tumor_densenet121_trained.pt"),
+    "resnet18": BASE_DIR / "models" / "brain_tumor_resnet18_v2_trained.pt",
+    "efficientnet": BASE_DIR
+    / "models"
+    / "brain_tumor_efficientnet_b0_trained.pt",
+    "densenet": BASE_DIR / "models" / "brain_tumor_densenet121_trained.pt",
 }
 MODEL_VERSION = "v3-multi-model"
 
 # Ensure feedback directories exist
-FEEDBACK_DIR = Path("data/feedback")
+FEEDBACK_DIR = BASE_DIR / "data" / "feedback"
 FEEDBACK_IMAGES_DIR = FEEDBACK_DIR / "images"
 FEEDBACK_DIR.mkdir(parents=True, exist_ok=True)
 FEEDBACK_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
@@ -72,7 +78,6 @@ if not FEEDBACK_FILE.exists():
 
 # Data directories for "Similar Cases" or testing
 # (Adjust these paths to match your local structure)
-BASE_DIR = Path(__file__).resolve().parent.parent
 TEST_DIRS = [
     BASE_DIR / "data" / "Brain_Tumor_Dataset" / "external_dataset" / "testing",
     BASE_DIR / "data" / "Brain_Tumor_Dataset" / "Testing",
@@ -287,16 +292,13 @@ def index():
     return render_template("index-v2.html")
 
 
-@app.route("/legacy")
-def index_legacy():
-    """Serve the legacy UI (old version)"""
-    return render_template("index.html")
-
-
 @app.route("/api/random-test", methods=["GET"])
 def random_test():
     """Get random test image and prediction"""
     try:
+        if model is None:
+            return jsonify({"error": "No model is loaded on the server"}), 503
+
         # Collect all images from test directories
         test_images = []
         print(f"Searching for images in: {[str(d) for d in TEST_DIRS]}", flush=True)
@@ -327,7 +329,10 @@ def random_test():
         with open(image_path, "rb") as f:
             image_bytes = f.read()
 
-        image_tensor, image_pil = preprocess_image(image_bytes)
+        try:
+            image_tensor, image_pil = preprocess_image(image_bytes)
+        except UnidentifiedImageError:
+            return jsonify({"error": "Test image could not be read"}), 500
 
         # Make prediction
         with torch.no_grad():
@@ -391,7 +396,10 @@ def predict_upload():
         image_bytes = uploaded_file.read()
 
         # Preprocessing
-        image_tensor, image_pil = preprocess_image(image_bytes)
+        try:
+            image_tensor, image_pil = preprocess_image(image_bytes)
+        except UnidentifiedImageError:
+            return jsonify({"error": "Invalid image file"}), 400
 
         # Prediction
         with torch.no_grad():
@@ -591,7 +599,10 @@ def analyze_detailed():
         image_bytes = uploaded_file.read()
 
         # Preprocess image
-        image_tensor, image_pil = preprocess_image(image_bytes)
+        try:
+            image_tensor, image_pil = preprocess_image(image_bytes)
+        except UnidentifiedImageError:
+            return jsonify({"error": "Invalid image file"}), 400
 
         # Model colors for frontend
         model_colors = {
@@ -722,6 +733,9 @@ def analyze_detailed():
 def random_test_detailed():
     """Get random test image with detailed analysis (for new UI)"""
     try:
+        if not models_dict:
+            return jsonify({"error": "No models loaded on the server"}), 503
+
         import random
 
         # Collect all images from test directories
@@ -740,7 +754,10 @@ def random_test_detailed():
         with open(image_path, "rb") as f:
             image_bytes = f.read()
 
-        image_tensor, image_pil = preprocess_image(image_bytes)
+        try:
+            image_tensor, image_pil = preprocess_image(image_bytes)
+        except UnidentifiedImageError:
+            return jsonify({"error": "Test image could not be read"}), 500
 
         # Model colors
         model_colors = {

@@ -19,7 +19,8 @@ const AppState = {
     currentData: null,
     panelOrder: ['upload', 'analysis', 'visualization', 'result'],
     charts: {},
-    animationFrames: {}
+    animationFrames: {},
+    animationTimeouts: {}
 };
 
 // ========================================
@@ -126,14 +127,12 @@ async function handleFileUpload(file) {
             body: formData
         });
 
-        if (!response.ok) {
-            throw new Error('Analysis failed');
+        const data = await response.json().catch(() => null);
+        if (!response.ok || !data) {
+            const message = (data && data.error) ? data.error : 'Analysis failed';
+            throw new Error(message);
         }
-
-        const data = await response.json();
-        if (data.error) {
-            throw new Error(data.error);
-        }
+        if (data.error) throw new Error(data.error);
 
         AppState.currentData = data;
         displayResults(data);
@@ -154,14 +153,12 @@ async function loadRandomTest() {
     try {
         const response = await fetch('/api/random-test-detailed');
 
-        if (!response.ok) {
-            throw new Error('Failed to load test image');
+        const data = await response.json().catch(() => null);
+        if (!response.ok || !data) {
+            const message = (data && data.error) ? data.error : 'Failed to load test image';
+            throw new Error(message);
         }
-
-        const data = await response.json();
-        if (data.error) {
-            throw new Error(data.error);
-        }
+        if (data.error) throw new Error(data.error);
 
         AppState.currentData = data;
         displayResults(data);
@@ -177,6 +174,11 @@ async function loadRandomTest() {
 // DISPLAY RESULTS
 // ========================================
 function displayResults(data) {
+    if (!data || !data.models) {
+        showError('No model results returned from server');
+        return;
+    }
+
     // Show result panels
     if (DOM.analysisPanel) DOM.analysisPanel.classList.remove('hidden');
     if (DOM.visualizationPanel) DOM.visualizationPanel.classList.remove('hidden');
@@ -221,6 +223,8 @@ function displayImages(data) {
     // Draw bounding box
     if (data.bbox) {
         drawBoundingBox(data.bbox);
+    } else {
+        clearBoundingBox();
     }
 }
 
@@ -232,6 +236,16 @@ function drawBoundingBox(bbox) {
     rect.setAttribute('y', `${bbox.y}%`);
     rect.setAttribute('width', `${bbox.width}%`);
     rect.setAttribute('height', `${bbox.height}%`);
+}
+
+function clearBoundingBox() {
+    const rect = document.getElementById('bboxRect');
+    if (!rect) return;
+
+    rect.setAttribute('x', '0');
+    rect.setAttribute('y', '0');
+    rect.setAttribute('width', '0');
+    rect.setAttribute('height', '0');
 }
 
 // ========================================
@@ -250,13 +264,17 @@ function animateModelGraphs(models) {
 
         if (!container) return;
 
-        // Clear previous chart
-        container.innerHTML = '';
-
-        // Destroy previous animation
+        // Reset previous state
+        if (AppState.charts[modelName]) {
+            AppState.charts[modelName].destroy();
+        }
         if (AppState.animationFrames[modelName]) {
             cancelAnimationFrame(AppState.animationFrames[modelName]);
         }
+        if (AppState.animationTimeouts[modelName]) {
+            clearTimeout(AppState.animationTimeouts[modelName]);
+        }
+        container.innerHTML = '';
 
         // Animate the confidence build-up
         const layerProgress = modelData.layer_progress;
@@ -269,13 +287,14 @@ function animateModelGraphs(models) {
         const stepDuration = 150; // ms per step
 
         // Create uPlot chart
+        const chartWidth = container.clientWidth || (container.parentElement ? container.parentElement.clientWidth : 0) || 320;
         const chartData = [
             [0],  // x-axis (layer index)
             [0]   // y-axis (confidence)
         ];
 
         const opts = {
-            width: container.clientWidth,
+            width: chartWidth,
             height: 80,
             cursor: { show: false },
             legend: { show: false },
@@ -335,13 +354,11 @@ function animateModelGraphs(models) {
 
             currentStep++;
 
-            AppState.animationFrames[modelName] = requestAnimationFrame(() => {
-                setTimeout(animateStep, stepDuration);
-            });
+            AppState.animationTimeouts[modelName] = setTimeout(animateStep, stepDuration);
         }
 
         // Start animation with staggered delay
-        setTimeout(animateStep, index * 100);
+        AppState.animationTimeouts[modelName] = setTimeout(animateStep, index * 100);
     });
 }
 
