@@ -271,6 +271,7 @@ The models demonstrate strong convergence during training with consistent valida
 - `make train` / `make evaluate` to run the training/eval scripts
 - `make test` to run lightweight tests (imports, transforms)
 - `make lint` for a quick syntax check via `compileall`
+- GitHub Actions: CI defined in `.github/workflows/ci.yml` (runs lint + tests on push/PR to `main`)
 
 ### Device detection
 

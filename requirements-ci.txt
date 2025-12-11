@@ -1,0 +1,6 @@
+pytest
+Pillow
+matplotlib
+seaborn
+scikit-learn
+pyyaml
