@@ -30,6 +30,8 @@ The system provides comprehensive predictions with class probabilities, Grad-CAM
 
 ```
 .
+├── docs/               # Guides (data paths, training, diagrams)
+├── src/brain_tumor/    # Shared utilities (paths, transforms)
 ├── website/          # Flask application, templates, static assets
 ├── scripts/          # Training, evaluation, and data preparation utilities
 ├── notebooks/        # Jupyter notebooks for exploration and training
@@ -117,7 +119,7 @@ The combined dataset contains 7,203 training images and 1,311 testing images acr
 - `models/brain_tumor_efficientnet_b0_trained.pt`
 - `models/brain_tumor_densenet121_trained.pt`
 
-**Training the Models:** Please follow the detailed guide in `TRAINING_GUIDE.md` to train the models yourself. The application works with all available trained models.
+**Training the Models:** Please follow the detailed guide in `docs/guides/TRAINING_GUIDE.md` to train the models yourself. The application works with all available trained models.
 
 **Future Updates:** Once the models are fully trained and validated, the final weights will be made available and documented in the repository.
 
@@ -152,17 +154,19 @@ curl http://localhost:3000/api/health
 
 ## Training
 
-**Detailed Training Guide:** Please read the complete guide in `TRAINING_GUIDE.md` for important notes, best practices, and what to pay attention to during training.
+**Detailed Training Guide:** Please read the complete guide in `docs/guides/TRAINING_GUIDE.md` for important notes, best practices, and what to pay attention to during training.
 
 ### Using Jupyter notebooks
 
 The project includes training notebooks optimized for different scenarios:
 
-- `notebooks/train_resnet18.ipynb` - ResNet18 training with combined datasets
-- `notebooks/train_efficientnet_b0.ipynb` - EfficientNet-B0 training
-- `notebooks/train_densenet121.ipynb` - DenseNet121 training
+- `notebooks/01_exploration.ipynb` - Exploratory data analysis
+- `notebooks/02_train_resnet18.ipynb` - ResNet18 training with combined datasets
+- `notebooks/03_train_efficientnet_b0.ipynb` - EfficientNet-B0 training
+- `notebooks/04_train_densenet121.ipynb` - DenseNet121 training
+- `notebooks/05_model_explainability_education.ipynb` - Grad-CAM and explainability
 
-All notebooks use relative paths and automatically detect the project root. See `FIX_DATA_PATHS.md` for path configuration details.
+All notebooks use relative paths and automatically detect the project root. See `docs/guides/FIX_DATA_PATHS.md` for path configuration details.
 
 **Note:** Trained models are saved with unique names:
 
@@ -183,6 +187,7 @@ This will:
 - Train the model with data augmentation
 - Save weights to `models/brain_tumor_resnet18_v2.pt`
 - Store training metrics in `runs/metrics_v2.json`
+- Optional: copy `configs/train.example.yaml` to `configs/train.yaml` to override data paths or hyperparameters without editing the script.
 
 ### Evaluation
 
@@ -254,9 +259,18 @@ The models demonstrate strong convergence during training with consistent valida
 
 - `website/app.py` - Flask backend with model inference and API endpoints
 - `website/dataset.py` - Data loading and preprocessing utilities
+- `src/brain_tumor/` - Shared utilities (paths, transforms) for scripts, web, and notebooks
+- `docs/guides/` - Training and data path guides
 - `scripts/train.py` - Training script with early stopping and metrics tracking
 - `scripts/evaluate.py` - Evaluation script with detailed analysis
 - `scripts/prepare_data.py` - Data preparation and splitting utilities
+
+### Developer workflow
+
+- `make web` to run the Flask app (`PYTHONPATH=src` set automatically)
+- `make train` / `make evaluate` to run the training/eval scripts
+- `make test` to run lightweight tests (imports, transforms)
+- `make lint` for a quick syntax check via `compileall`
 
 ### Device detection
 

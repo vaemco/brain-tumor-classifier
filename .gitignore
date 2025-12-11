@@ -41,14 +41,14 @@ venv.bak/
 # Models should not be committed - use Git LFS or external storage if needed
 
 # Data - DO NOT COMMIT
-data/
-Data/
+data/*
+!data/README.md
+Data/*
+!Data/README.md
 dataset/
 datasets/
 *.csv
 *.tsv
-# Keep README in data folder if it exists
-!data/README.md
 
 # Training outputs
 runs/
@@ -58,6 +58,7 @@ mlruns/
 # Keep metrics.json for reference
 !runs/metrics.json
 !runs/training_history.png
+!runs/README.md
 
 # Uploads and temporary files
 website/static/uploads/*
@@ -95,6 +96,7 @@ Thumbs.db
 secrets/
 credentials/
 config.local.yml
+configs/train.yaml
 
 # Large files
 *.zip

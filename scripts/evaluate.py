@@ -17,6 +17,7 @@ How to Modify:
 """
 
 import shutil
+import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -25,15 +26,24 @@ import torch
 import torch.nn as nn
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from torch.utils.data import DataLoader
-from torchvision import datasets, models, transforms
+from torchvision import datasets, models
+
+# Allow importing shared utilities from src/
+BASE_DIR = Path(__file__).resolve().parent.parent
+SRC_DIR = BASE_DIR / "src"
+if SRC_DIR.exists() and str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
+from brain_tumor.paths import get_data_dirs, get_models_dir  # noqa: E402
+from brain_tumor.transforms import build_val_transforms  # noqa: E402
 
 # Configuration
-BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = BASE_DIR / "data" / "Brain_Tumor_Dataset" / "external_dataset" / "training"
-MODEL_PATH = BASE_DIR / "models" / "brain_tumor_resnet18_v2_trained.pt"
+_, DATA_DIR = get_data_dirs(BASE_DIR)
+MODEL_DIR = get_models_dir(BASE_DIR)
+MODEL_PATH = MODEL_DIR / "brain_tumor_resnet18_v2_trained.pt"
 if not MODEL_PATH.exists():
     print(f"Model {MODEL_PATH} not found, falling back to old naming")
-    MODEL_PATH = BASE_DIR / "models" / "brain_tumor_resnet18_v2.pt"
+    MODEL_PATH = MODEL_DIR / "brain_tumor_resnet18_v2.pt"
 
 MISCLASSIFIED_DIR = BASE_DIR / "misclassified"
 BATCH_SIZE = 32
@@ -49,15 +59,7 @@ else:
 print(f"Using device: {device}")
 
 # Transforms (Validation only)
-val_tf = transforms.Compose(
-    [
-        transforms.Grayscale(num_output_channels=3),
-        transforms.Resize(256),
-        transforms.CenterCrop(224),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ]
-)
+val_tf = build_val_transforms()
 
 # Load Data
 print("Loading external dataset...")

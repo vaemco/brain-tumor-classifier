@@ -1,13 +1,18 @@
 
-import torch
+"""
+Notebook-friendly import for custom transforms.
+Re-exports the shared AddGaussianNoise used across the project.
+"""
 
-class AddGaussianNoise(object):
-    def __init__(self, mean=0., std=1.):
-        self.std = std
-        self.mean = mean
+import sys
+from pathlib import Path
 
-    def __call__(self, tensor):
-        return tensor + torch.randn(tensor.shape) * self.std + self.mean
+# Allow running notebooks without installing the package
+ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
+if SRC.exists() and str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
 
-    def __repr__(self):
-        return self.__class__.__name__ + '(mean={0}, std={1})'.format(self.mean, self.std)
+from brain_tumor.transforms import AddGaussianNoise
+
+__all__ = ["AddGaussianNoise"]

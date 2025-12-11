@@ -1,0 +1,12 @@
+# Copy this file to configs/train.yaml to override training defaults.
+data_dir: data/Brain_Tumor_Dataset/Training
+external_data_dir: data/Brain_Tumor_Dataset/external_dataset/training
+
+batch_size: 32
+epochs: 30
+patience: 5
+
+# Learning rates
+layer_lr: 0.0003
+fc_lr: 0.001
+weight_decay: 0.0001

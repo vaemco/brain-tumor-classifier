@@ -18,6 +18,7 @@ How to Modify:
 """
 
 import os
+import sys
 from copy import deepcopy
 from pathlib import Path
 
@@ -26,7 +27,29 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import ConcatDataset, DataLoader, random_split
-from torchvision import datasets, models, transforms
+import yaml
+from torchvision import datasets, models
+
+# Allow importing shared utilities from src/
+BASE_DIR = Path(__file__).resolve().parent.parent
+SRC_DIR = BASE_DIR / "src"
+if SRC_DIR.exists() and str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
+from brain_tumor.paths import get_data_dirs  # noqa: E402
+from brain_tumor.transforms import (  # noqa: E402
+    build_train_transforms,
+    build_val_transforms,
+)
+
+CONFIG_PATH = BASE_DIR / "configs" / "train.yaml"
+
+
+def load_config(path: Path) -> dict:
+    if path.exists():
+        with open(path, "r") as f:
+            return yaml.safe_load(f) or {}
+    return {}
 
 # --- Device Configuration ---
 # Automatically detects MPS (Mac), CUDA (NVIDIA), or CPU.
@@ -44,74 +67,30 @@ print(f"PyTorch version: {torch.__version__}")
 
 # Data Paths
 # Define paths relative to the script
-base_dir = Path(__file__).resolve().parent.parent
-data_dir = base_dir / "data" / "Brain_Tumor_Dataset" / "Training"
-external_data_dir = (
-    base_dir / "data" / "Brain_Tumor_Dataset" / "external_dataset" / "training"
-)
+base_dir = BASE_DIR
+config = load_config(CONFIG_PATH)
+data_dir_default, external_data_dir_default = get_data_dirs(base_dir)
+data_dir = Path(config.get("data_dir") or data_dir_default)
+external_data_dir = Path(config.get("external_data_dir") or external_data_dir_default)
+batch_size = int(config.get("batch_size", 32))
+epochs = int(config.get("epochs", 30))
+patience = int(config.get("patience", 5))
+layer_lr = float(config.get("layer_lr", 3e-4))
+fc_lr = float(config.get("fc_lr", 1e-3))
+weight_decay = float(config.get("weight_decay", 1e-4))
 
 print(f"Main Data Dir: {data_dir}")
 print(f"External Data Dir: {external_data_dir}")
 
 
-# Custom Noise Transform
-class AddGaussianNoise(object):
-    def __init__(self, mean=0.0, std=1.0):
-        self.std = std
-        self.mean = mean
-
-    def __call__(self, tensor):
-        return tensor + torch.randn(tensor.size()) * self.std + self.mean
-
-    def __repr__(self):
-        return self.__class__.__name__ + "(mean={0}, std={1})".format(
-            self.mean, self.std
-        )
-
-
 # --- Data Augmentation (Crucial for Generalization) ---
 # These transformations are applied to every training image on the fly.
 # They help the model learn to recognize tumors even if the image is rotated, blurry, or has different lighting.
-train_tf = transforms.Compose(
-    [
-        transforms.Grayscale(
-            num_output_channels=3
-        ),  # Ensure 3 channels even if input is B&W
-        transforms.Resize(256),
-        transforms.RandomResizedCrop(
-            224, scale=(0.8, 1.0), ratio=(0.90, 1.10)
-        ),  # Zoom in/out slightly
-        transforms.RandomHorizontalFlip(p=0.5),  # Mirror image
-        # Rotation & Affine: Simulates imperfect patient positioning
-        transforms.RandomRotation(30),
-        transforms.RandomAffine(
-            degrees=0, translate=(0.1, 0.1), scale=(0.9, 1.1), shear=10
-        ),
-        # Blur: Simulates motion or lower quality scans
-        transforms.RandomApply([transforms.GaussianBlur(kernel_size=3)], p=0.2),
-        # Color/Contrast Jitter: Simulates different scanner settings
-        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.1, hue=0.05),
-        transforms.ToTensor(),
-        # Noise: Simulates sensor noise (grain)
-        transforms.RandomApply([AddGaussianNoise(0.0, 0.05)], p=0.2),
-        transforms.Normalize(
-            mean=[0.485, 0.456, 0.406],  # ImageNet standards
-            std=[0.229, 0.224, 0.225],
-        ),
-    ]
-)
+train_tf = build_train_transforms()
 
 # Validation transforms: No augmentation, just resizing and normalization.
 # We want to evaluate on clean, standard images.
-val_tf = transforms.Compose(
-    [
-        transforms.Grayscale(num_output_channels=3),
-        transforms.Resize(256),
-        transforms.CenterCrop(224),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ]
-)
+val_tf = build_val_transforms()
 
 # Load Datasets
 print("Loading datasets...")
@@ -187,9 +166,11 @@ train_sampler = torch.utils.data.SubsetRandomSampler(train_idx)
 val_sampler = torch.utils.data.SubsetRandomSampler(val_idx)
 
 train_loader = DataLoader(
-    full_train, batch_size=32, sampler=train_sampler, num_workers=0
+    full_train, batch_size=batch_size, sampler=train_sampler, num_workers=0
 )
-val_loader = DataLoader(full_val, batch_size=32, sampler=val_sampler, num_workers=0)
+val_loader = DataLoader(
+    full_val, batch_size=batch_size, sampler=val_sampler, num_workers=0
+)
 
 print(f"Training batches: {len(train_loader)}")
 print(f"Validation batches: {len(val_loader)}")
@@ -216,21 +197,24 @@ params = [
             for n, p in model.named_parameters()
             if p.requires_grad and (n.startswith("layer3") or n.startswith("layer4"))
         ],
-        "lr": 3e-4,
+        "lr": layer_lr,
     },
-    {"params": model.fc.parameters(), "lr": 1e-3},
+    {"params": model.fc.parameters(), "lr": fc_lr},
 ]
-optimizer = optim.Adam(params, weight_decay=1e-4)
+optimizer = optim.Adam(params, weight_decay=weight_decay)
 criterion = nn.CrossEntropyLoss()
 
 print("Model ready for training on", device)
 
 # Training Loop
-epochs = 30
-patience = 5
 best_val = float("inf")
 bad = 0
 history = {"train_loss": [], "val_loss": [], "train_acc": [], "val_acc": []}
+
+print(
+    f"Hyperparameters -> epochs: {epochs}, batch_size: {batch_size}, "
+    f"layer_lr: {layer_lr}, fc_lr: {fc_lr}, weight_decay: {weight_decay}, patience: {patience}"
+)
 
 output_dir = base_dir / "runs"
 model_dir = base_dir / "models"
