@@ -29,7 +29,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from flask import Flask, jsonify, render_template, request
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 from pytorch_grad_cam import GradCAM
 from pytorch_grad_cam.utils.image import show_cam_on_image
 from torchvision import models
@@ -40,7 +40,11 @@ from website.dataset import val_tf
 print("Flask app starting...", flush=True)
 
 app = Flask(__name__)
-app.config["UPLOAD_FOLDER"] = Path("website/static/uploads")
+# Directories
+APP_DIR = Path(__file__).resolve().parent
+BASE_DIR = APP_DIR.parent
+
+app.config["UPLOAD_FOLDER"] = APP_DIR / "static" / "uploads"
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16MB max
 
 # Ensure upload folder exists
@@ -50,14 +54,16 @@ CLASSES = ["Glioma", "Meningioma", "No Tumor", "Pituitary"]
 
 # Model Paths
 MODEL_PATHS = {
-    "resnet18": Path("models/brain_tumor_resnet18_v2.pt"),
-    "efficientnet": Path("models/brain_tumor_efficientnet_b0.pt"),
-    "densenet": Path("models/brain_tumor_densenet121.pt"),
+    "resnet18": BASE_DIR / "models" / "brain_tumor_resnet18_v2_trained.pt",
+    "efficientnet": BASE_DIR
+    / "models"
+    / "brain_tumor_efficientnet_b0_trained.pt",
+    "densenet": BASE_DIR / "models" / "brain_tumor_densenet121_trained.pt",
 }
 MODEL_VERSION = "v3-multi-model"
 
 # Ensure feedback directories exist
-FEEDBACK_DIR = Path("data/feedback")
+FEEDBACK_DIR = BASE_DIR / "data" / "feedback"
 FEEDBACK_IMAGES_DIR = FEEDBACK_DIR / "images"
 FEEDBACK_DIR.mkdir(parents=True, exist_ok=True)
 FEEDBACK_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
@@ -72,7 +78,6 @@ if not FEEDBACK_FILE.exists():
 
 # Data directories for "Similar Cases" or testing
 # (Adjust these paths to match your local structure)
-BASE_DIR = Path(__file__).resolve().parent.parent
 TEST_DIRS = [
     BASE_DIR / "data" / "Brain_Tumor_Dataset" / "external_dataset" / "testing",
     BASE_DIR / "data" / "Brain_Tumor_Dataset" / "Testing",
@@ -97,8 +102,15 @@ def load_resnet18():
     num_classes = len(CLASSES)
 
     model = models.resnet18(weights=None)
+    # Match the trained checkpoint architecture:
+    # Dropout -> Linear(512, 256) -> BatchNorm1d -> ReLU -> Dropout -> Linear(256, 4)
     model.fc = nn.Sequential(
-        nn.Dropout(p=0.3), nn.Linear(model.fc.in_features, num_classes)
+        nn.Dropout(p=0.5),
+        nn.Linear(model.fc.in_features, 256),
+        nn.BatchNorm1d(256),
+        nn.ReLU(),
+        nn.Dropout(p=0.5),
+        nn.Linear(256, num_classes),
     )
 
     state_dict = torch.load(MODEL_PATHS["resnet18"], map_location=device)
@@ -115,8 +127,10 @@ def load_efficientnet():
 
     model = models.efficientnet_b0(weights=None)
     in_features = model.classifier[1].in_features
+    # Match the trained checkpoint architecture (Simple Head):
+    # Dropout(0.5) -> Linear(1280, 4)
     model.classifier = nn.Sequential(
-        nn.Dropout(p=0.3), nn.Linear(in_features, num_classes)
+        nn.Dropout(p=0.5), nn.Linear(in_features, num_classes)
     )
 
     state_dict = torch.load(MODEL_PATHS["efficientnet"], map_location=device)
@@ -133,8 +147,16 @@ def load_densenet():
 
     model = models.densenet121(weights=None)
     in_features = model.classifier.in_features
+    # Match the trained checkpoint architecture:
+    # Dropout -> Linear(1024, 256) -> BatchNorm1d -> ReLU -> Dropout -> Linear(256, 4)
+    # Note: Training used p=0.5 for dropout
     model.classifier = nn.Sequential(
-        nn.Dropout(p=0.3), nn.Linear(in_features, num_classes)
+        nn.Dropout(p=0.5),
+        nn.Linear(in_features, 256),
+        nn.BatchNorm1d(256),
+        nn.ReLU(),
+        nn.Dropout(p=0.5),
+        nn.Linear(256, num_classes),
     )
 
     state_dict = torch.load(MODEL_PATHS["densenet"], map_location=device)
@@ -193,7 +215,7 @@ def generate_gradcam(image_tensor, image_pil, model_for_cam=None):
         target_layer = model_for_cam.features[-1]
     else:
         raise ValueError("Unknown model architecture for GradCAM")
-    cam = GradCAM(model=model, target_layers=[target_layer])
+    cam = GradCAM(model=model_for_cam, target_layers=[target_layer])
 
     # Generate CAM
     grayscale_cam = cam(input_tensor=image_tensor, targets=None)
@@ -266,14 +288,17 @@ def image_to_base64(image_array):
 # Routes
 @app.route("/")
 def index():
-    """Serve the main page"""
-    return render_template("index.html")
+    """Serve the main page (new v2 UI)"""
+    return render_template("index-v2.html")
 
 
 @app.route("/api/random-test", methods=["GET"])
 def random_test():
     """Get random test image and prediction"""
     try:
+        if model is None:
+            return jsonify({"error": "No model is loaded on the server"}), 503
+
         # Collect all images from test directories
         test_images = []
         print(f"Searching for images in: {[str(d) for d in TEST_DIRS]}", flush=True)
@@ -304,7 +329,10 @@ def random_test():
         with open(image_path, "rb") as f:
             image_bytes = f.read()
 
-        image_tensor, image_pil = preprocess_image(image_bytes)
+        try:
+            image_tensor, image_pil = preprocess_image(image_bytes)
+        except UnidentifiedImageError:
+            return jsonify({"error": "Test image could not be read"}), 500
 
         # Make prediction
         with torch.no_grad():
@@ -368,7 +396,10 @@ def predict_upload():
         image_bytes = uploaded_file.read()
 
         # Preprocessing
-        image_tensor, image_pil = preprocess_image(image_bytes)
+        try:
+            image_tensor, image_pil = preprocess_image(image_bytes)
+        except UnidentifiedImageError:
+            return jsonify({"error": "Invalid image file"}), 400
 
         # Prediction
         with torch.no_grad():
@@ -545,6 +576,301 @@ def train_stream():
             yield f"data: {json.dumps(step)}\n\n"
 
     return flask.Response(generate(), mimetype="text/event-stream")
+
+
+@app.route("/api/analyze-detailed", methods=["POST"])
+def analyze_detailed():
+    """
+    Detailed analysis endpoint for the new UI.
+    Returns predictions from all 3 models with layer progress simulation,
+    averaged predictions, and GradCAM from the most confident model.
+    """
+    try:
+        if not models_dict:
+            return jsonify({"error": "No models loaded on the server"}), 500
+
+        # Get uploaded file
+        uploaded_file = request.files.get("file") or request.files.get("image")
+        if uploaded_file is None or uploaded_file.filename == "":
+            return jsonify({"error": "No file uploaded"}), 400
+
+        # Read image bytes
+        uploaded_file.seek(0)
+        image_bytes = uploaded_file.read()
+
+        # Preprocess image
+        try:
+            image_tensor, image_pil = preprocess_image(image_bytes)
+        except UnidentifiedImageError:
+            return jsonify({"error": "Invalid image file"}), 400
+
+        # Model colors for frontend
+        model_colors = {
+            "resnet18": "#3B82F6",  # Blue
+            "efficientnet": "#EF4444",  # Red
+            "densenet": "#10B981",  # Green
+        }
+
+        # Layer names for simulation (approximate layer structure)
+        layer_names = {
+            "resnet18": [
+                "conv1",
+                "layer1",
+                "layer2",
+                "layer3",
+                "layer4",
+                "avgpool",
+                "fc",
+            ],
+            "efficientnet": [
+                "stem",
+                "blocks1-2",
+                "blocks3-4",
+                "blocks5-6",
+                "blocks7",
+                "head",
+                "fc",
+            ],
+            "densenet": [
+                "conv0",
+                "denseblock1",
+                "denseblock2",
+                "denseblock3",
+                "denseblock4",
+                "fc",
+            ],
+        }
+
+        # Run predictions on all models
+        model_results = {}
+        all_probs = []
+
+        for model_name, loaded_model in models_dict.items():
+            with torch.no_grad():
+                output = loaded_model(image_tensor)
+                probs = F.softmax(output, dim=1).cpu().numpy()[0]
+
+            top_idx = int(probs.argmax())
+            confidence = float(probs[top_idx])
+
+            # Simulate layer progress (confidence building up through layers)
+            num_layers = len(layer_names.get(model_name, ["fc"]))
+            layer_progress = []
+            for i in range(num_layers):
+                # Simulate confidence building up: starts low, ends at final confidence
+                progress = (i + 1) / num_layers
+                # Use exponential curve for more realistic "thinking" effect
+                simulated_conf = (
+                    confidence * (1 - np.exp(-3 * progress)) / (1 - np.exp(-3))
+                )
+                layer_progress.append(round(float(simulated_conf), 3))
+
+            model_results[model_name] = {
+                "color": model_colors.get(model_name, "#888888"),
+                "predictions": [
+                    {"class": CLASSES[i], "probability": float(probs[i])}
+                    for i in range(len(CLASSES))
+                ],
+                "layer_progress": layer_progress,
+                "layer_names": layer_names.get(model_name, ["fc"]),
+                "top_class": CLASSES[top_idx],
+                "confidence": confidence,
+            }
+
+            all_probs.append(probs)
+
+        # Calculate averaged predictions across all models
+        avg_probs = np.mean(all_probs, axis=0)
+        averaged_predictions = [
+            {"class": CLASSES[i], "probability": float(avg_probs[i])}
+            for i in range(len(CLASSES))
+        ]
+
+        # Determine final result (class with highest average probability)
+        final_idx = int(avg_probs.argmax())
+        final_result = {
+            "class": CLASSES[final_idx],
+            "confidence": float(avg_probs[final_idx]),
+        }
+
+        # Find the most confident model for GradCAM
+        best_model_name = max(
+            model_results, key=lambda k: model_results[k]["confidence"]
+        )
+        best_model = models_dict[best_model_name]
+
+        # Generate GradCAM with the best model
+        heatmap, bbox = generate_gradcam(
+            image_tensor, image_pil, model_for_cam=best_model
+        )
+        heatmap_b64 = image_to_base64(heatmap)
+
+        # Original image as base64
+        original_resized = np.array(image_pil.resize((224, 224)))
+        original_b64 = image_to_base64(original_resized)
+
+        # Build response
+        response = {
+            "original_b64": original_b64,
+            "heatmap_b64": heatmap_b64,
+            "bbox": bbox,
+            "gradcam_model": best_model_name,
+            "models": model_results,
+            "averaged_predictions": averaged_predictions,
+            "final_result": final_result,
+            "filename": secure_filename(uploaded_file.filename),
+            "model_version": MODEL_VERSION,
+        }
+
+        return jsonify(response)
+
+    except Exception as e:
+        print("Error in /api/analyze-detailed:", e, file=sys.stderr, flush=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/random-test-detailed", methods=["GET"])
+def random_test_detailed():
+    """Get random test image with detailed analysis (for new UI)"""
+    try:
+        if not models_dict:
+            return jsonify({"error": "No models loaded on the server"}), 503
+
+        import random
+
+        # Collect all images from test directories
+        test_images = []
+        for d in TEST_DIRS:
+            if d.exists():
+                for ext in ["*.jpg", "*.JPG", "*.png", "*.PNG", "*.jpeg", "*.JPEG"]:
+                    test_images.extend(list(d.rglob(ext)))
+
+        if not test_images:
+            return jsonify({"error": "No test images found"}), 404
+
+        image_path = random.choice(test_images)
+
+        # Read image
+        with open(image_path, "rb") as f:
+            image_bytes = f.read()
+
+        try:
+            image_tensor, image_pil = preprocess_image(image_bytes)
+        except UnidentifiedImageError:
+            return jsonify({"error": "Test image could not be read"}), 500
+
+        # Model colors
+        model_colors = {
+            "resnet18": "#3B82F6",
+            "efficientnet": "#EF4444",
+            "densenet": "#10B981",
+        }
+
+        layer_names = {
+            "resnet18": [
+                "conv1",
+                "layer1",
+                "layer2",
+                "layer3",
+                "layer4",
+                "avgpool",
+                "fc",
+            ],
+            "efficientnet": [
+                "stem",
+                "blocks1-2",
+                "blocks3-4",
+                "blocks5-6",
+                "blocks7",
+                "head",
+                "fc",
+            ],
+            "densenet": [
+                "conv0",
+                "denseblock1",
+                "denseblock2",
+                "denseblock3",
+                "denseblock4",
+                "fc",
+            ],
+        }
+
+        model_results = {}
+        all_probs = []
+
+        for model_name, loaded_model in models_dict.items():
+            with torch.no_grad():
+                output = loaded_model(image_tensor)
+                probs = F.softmax(output, dim=1).cpu().numpy()[0]
+
+            top_idx = int(probs.argmax())
+            confidence = float(probs[top_idx])
+
+            num_layers = len(layer_names.get(model_name, ["fc"]))
+            layer_progress = []
+            for i in range(num_layers):
+                progress = (i + 1) / num_layers
+                simulated_conf = (
+                    confidence * (1 - np.exp(-3 * progress)) / (1 - np.exp(-3))
+                )
+                layer_progress.append(round(float(simulated_conf), 3))
+
+            model_results[model_name] = {
+                "color": model_colors.get(model_name, "#888888"),
+                "predictions": [
+                    {"class": CLASSES[i], "probability": float(probs[i])}
+                    for i in range(len(CLASSES))
+                ],
+                "layer_progress": layer_progress,
+                "layer_names": layer_names.get(model_name, ["fc"]),
+                "top_class": CLASSES[top_idx],
+                "confidence": confidence,
+            }
+
+            all_probs.append(probs)
+
+        avg_probs = np.mean(all_probs, axis=0)
+        averaged_predictions = [
+            {"class": CLASSES[i], "probability": float(avg_probs[i])}
+            for i in range(len(CLASSES))
+        ]
+
+        final_idx = int(avg_probs.argmax())
+        final_result = {
+            "class": CLASSES[final_idx],
+            "confidence": float(avg_probs[final_idx]),
+        }
+
+        best_model_name = max(
+            model_results, key=lambda k: model_results[k]["confidence"]
+        )
+        best_model = models_dict[best_model_name]
+
+        heatmap, bbox = generate_gradcam(
+            image_tensor, image_pil, model_for_cam=best_model
+        )
+        heatmap_b64 = image_to_base64(heatmap)
+
+        original_resized = np.array(image_pil.resize((224, 224)))
+        original_b64 = image_to_base64(original_resized)
+
+        response = {
+            "original_b64": original_b64,
+            "heatmap_b64": heatmap_b64,
+            "bbox": bbox,
+            "gradcam_model": best_model_name,
+            "models": model_results,
+            "averaged_predictions": averaged_predictions,
+            "final_result": final_result,
+            "filename": image_path.name,
+            "model_version": MODEL_VERSION,
+        }
+
+        return jsonify(response)
+
+    except Exception as e:
+        print("Error in /api/random-test-detailed:", e, file=sys.stderr, flush=True)
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/health", methods=["GET"])
