@@ -2,7 +2,7 @@
 
 ## Problem
 
-The notebooks still contain placeholder paths and absolute directories.
+The notebooks may still contain placeholder paths and absolute directories.
 
 ## Solution (Relative and Anonymous)
 
