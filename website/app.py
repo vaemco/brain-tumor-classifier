@@ -100,11 +100,11 @@ def load_resnet18():
     # Match the trained checkpoint architecture:
     # Dropout -> Linear(512, 256) -> BatchNorm1d -> ReLU -> Dropout -> Linear(256, 4)
     model.fc = nn.Sequential(
-        nn.Dropout(p=0.3),
+        nn.Dropout(p=0.5),
         nn.Linear(model.fc.in_features, 256),
         nn.BatchNorm1d(256),
         nn.ReLU(),
-        nn.Dropout(p=0.3),
+        nn.Dropout(p=0.5),
         nn.Linear(256, num_classes),
     )
 
@@ -125,8 +125,7 @@ def load_efficientnet():
     # Match the trained checkpoint architecture (Simple Head):
     # Dropout(0.5) -> Linear(1280, 4)
     model.classifier = nn.Sequential(
-        nn.Dropout(p=0.5),
-        nn.Linear(in_features, num_classes)
+        nn.Dropout(p=0.5), nn.Linear(in_features, num_classes)
     )
 
     state_dict = torch.load(MODEL_PATHS["efficientnet"], map_location=device)
@@ -292,7 +291,6 @@ def index():
 def index_legacy():
     """Serve the legacy UI (old version)"""
     return render_template("index.html")
-
 
 
 @app.route("/api/random-test", methods=["GET"])
@@ -597,16 +595,39 @@ def analyze_detailed():
 
         # Model colors for frontend
         model_colors = {
-            "resnet18": "#3B82F6",      # Blue
+            "resnet18": "#3B82F6",  # Blue
             "efficientnet": "#EF4444",  # Red
-            "densenet": "#10B981",      # Green
+            "densenet": "#10B981",  # Green
         }
 
         # Layer names for simulation (approximate layer structure)
         layer_names = {
-            "resnet18": ["conv1", "layer1", "layer2", "layer3", "layer4", "avgpool", "fc"],
-            "efficientnet": ["stem", "blocks1-2", "blocks3-4", "blocks5-6", "blocks7", "head", "fc"],
-            "densenet": ["conv0", "denseblock1", "denseblock2", "denseblock3", "denseblock4", "fc"],
+            "resnet18": [
+                "conv1",
+                "layer1",
+                "layer2",
+                "layer3",
+                "layer4",
+                "avgpool",
+                "fc",
+            ],
+            "efficientnet": [
+                "stem",
+                "blocks1-2",
+                "blocks3-4",
+                "blocks5-6",
+                "blocks7",
+                "head",
+                "fc",
+            ],
+            "densenet": [
+                "conv0",
+                "denseblock1",
+                "denseblock2",
+                "denseblock3",
+                "denseblock4",
+                "fc",
+            ],
         }
 
         # Run predictions on all models
@@ -628,7 +649,9 @@ def analyze_detailed():
                 # Simulate confidence building up: starts low, ends at final confidence
                 progress = (i + 1) / num_layers
                 # Use exponential curve for more realistic "thinking" effect
-                simulated_conf = confidence * (1 - np.exp(-3 * progress)) / (1 - np.exp(-3))
+                simulated_conf = (
+                    confidence * (1 - np.exp(-3 * progress)) / (1 - np.exp(-3))
+                )
                 layer_progress.append(round(float(simulated_conf), 3))
 
             model_results[model_name] = {
@@ -660,11 +683,15 @@ def analyze_detailed():
         }
 
         # Find the most confident model for GradCAM
-        best_model_name = max(model_results, key=lambda k: model_results[k]["confidence"])
+        best_model_name = max(
+            model_results, key=lambda k: model_results[k]["confidence"]
+        )
         best_model = models_dict[best_model_name]
 
         # Generate GradCAM with the best model
-        heatmap, bbox = generate_gradcam(image_tensor, image_pil, model_for_cam=best_model)
+        heatmap, bbox = generate_gradcam(
+            image_tensor, image_pil, model_for_cam=best_model
+        )
         heatmap_b64 = image_to_base64(heatmap)
 
         # Original image as base64
@@ -723,9 +750,32 @@ def random_test_detailed():
         }
 
         layer_names = {
-            "resnet18": ["conv1", "layer1", "layer2", "layer3", "layer4", "avgpool", "fc"],
-            "efficientnet": ["stem", "blocks1-2", "blocks3-4", "blocks5-6", "blocks7", "head", "fc"],
-            "densenet": ["conv0", "denseblock1", "denseblock2", "denseblock3", "denseblock4", "fc"],
+            "resnet18": [
+                "conv1",
+                "layer1",
+                "layer2",
+                "layer3",
+                "layer4",
+                "avgpool",
+                "fc",
+            ],
+            "efficientnet": [
+                "stem",
+                "blocks1-2",
+                "blocks3-4",
+                "blocks5-6",
+                "blocks7",
+                "head",
+                "fc",
+            ],
+            "densenet": [
+                "conv0",
+                "denseblock1",
+                "denseblock2",
+                "denseblock3",
+                "denseblock4",
+                "fc",
+            ],
         }
 
         model_results = {}
@@ -743,7 +793,9 @@ def random_test_detailed():
             layer_progress = []
             for i in range(num_layers):
                 progress = (i + 1) / num_layers
-                simulated_conf = confidence * (1 - np.exp(-3 * progress)) / (1 - np.exp(-3))
+                simulated_conf = (
+                    confidence * (1 - np.exp(-3 * progress)) / (1 - np.exp(-3))
+                )
                 layer_progress.append(round(float(simulated_conf), 3))
 
             model_results[model_name] = {
@@ -772,10 +824,14 @@ def random_test_detailed():
             "confidence": float(avg_probs[final_idx]),
         }
 
-        best_model_name = max(model_results, key=lambda k: model_results[k]["confidence"])
+        best_model_name = max(
+            model_results, key=lambda k: model_results[k]["confidence"]
+        )
         best_model = models_dict[best_model_name]
 
-        heatmap, bbox = generate_gradcam(image_tensor, image_pil, model_for_cam=best_model)
+        heatmap, bbox = generate_gradcam(
+            image_tensor, image_pil, model_for_cam=best_model
+        )
         heatmap_b64 = image_to_base64(heatmap)
 
         original_resized = np.array(image_pil.resize((224, 224)))
