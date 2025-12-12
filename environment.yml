@@ -50,3 +50,4 @@ dependencies:
     - tensorboard
     - grad-cam
     - pytest
+    - plotly
