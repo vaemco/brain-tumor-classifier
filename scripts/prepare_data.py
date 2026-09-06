@@ -1,54 +1,115 @@
 """
-Data Preparation Script
-=======================
+Data Preparation Script.
 
-This script splits a raw dataset into Training and Testing sets.
-It is useful when you download a dataset that isn't already split.
-
-Logic:
-1.  Reads images from `SOURCE_DIR`.
-2.  Shuffles them randomly (seeded for reproducibility).
-3.  Splits them based on `TRAIN_RATIO` (default 80% train, 20% test).
-4.  Copies files into `TARGET_DIR/training` and `TARGET_DIR/testing`.
-
-How to Modify:
-- Ratio: Change `TRAIN_RATIO` to 0.7 or 0.9 to adjust the split.
-- Paths: Update `SOURCE_DIR` if your raw data is elsewhere.
+Splits a raw dataset into Training and Testing sets with reproducible shuffling.
 """
-import os
+
+import argparse
+import logging
+from pathlib import Path
 import random
 import shutil
-from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-SOURCE_DIR = BASE_DIR / "data" / "Brain_Tumor_Dataset" / "external_data"
-TARGET_DIR = BASE_DIR / "data" / "Brain_Tumor_Dataset" / "external_dataset"
+from brain_tumor.paths import project_root
 
-TRAIN_RATIO = 0.8
-classes = ["glioma", "meningioma", "notumor", "pituitary"]
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
 
-for split in ["training", "testing"]:
+DEFAULT_CLASSES = ["glioma", "meningioma", "notumor", "pituitary"]
+
+
+def prepare_dataset(
+    source_dir: Path,
+    target_dir: Path,
+    train_ratio: float = 0.8,
+    classes: list[str] | None = None,
+    seed: int = 42,
+) -> None:
+    """
+    Split images in source_dir into training and testing directories.
+
+    Args:
+        source_dir: Directory containing class subfolders of raw images
+        target_dir: Destination directory where training/ and testing/ folders are created
+        train_ratio: Proportion of images assigned to training (e.g. 0.8)
+        classes: List of class directory names to process
+        seed: Random seed for reproducible splitting
+    """
+    if classes is None:
+        classes = DEFAULT_CLASSES
+
+    rng = random.Random(seed)
+
+    if not source_dir.exists():
+        logger.warning(f"Source directory does not exist: {source_dir}")
+        return
+
+    for split in ("training", "testing"):
+        for cls in classes:
+            (target_dir / split / cls).mkdir(parents=True, exist_ok=True)
+
     for cls in classes:
-        os.makedirs(os.path.join(TARGET_DIR, split, cls), exist_ok=True)
+        class_path = source_dir / cls
+        if not class_path.exists():
+            logger.warning(f"Class folder not found: {class_path}")
+            continue
 
-for cls in classes:
-    class_path = os.path.join(SOURCE_DIR, cls)
-    images = [f for f in os.listdir(class_path) if f.lower().endswith((".png", ".jpg", ".jpeg"))]
+        images = [
+            f.name
+            for f in class_path.iterdir()
+            if f.is_file() and f.suffix.lower() in (".png", ".jpg", ".jpeg")
+        ]
 
-    random.shuffle(images)
+        rng.shuffle(images)
 
-    split_index = int(len(images) * TRAIN_RATIO)
-    train_imgs = images[:split_index]
-    test_imgs = images[split_index:]
+        split_index = int(len(images) * train_ratio)
+        train_imgs = images[:split_index]
+        test_imgs = images[split_index:]
 
-    for img in train_imgs:
-        src = os.path.join(class_path, img)
-        dst = os.path.join(TARGET_DIR, "training", cls, img)
-        shutil.copy2(src, dst)
+        for img in train_imgs:
+            shutil.copy2(class_path / img, target_dir / "training" / cls / img)
 
-    for img in test_imgs:
-        src = os.path.join(class_path, img)
-        dst = os.path.join(TARGET_DIR, "testing", cls, img)
-        shutil.copy2(src, dst)
+        for img in test_imgs:
+            shutil.copy2(class_path / img, target_dir / "testing" / cls / img)
 
-    print(f"{cls}: {len(train_imgs)} train / {len(test_imgs)} test")
+        logger.info(f"{cls}: {len(train_imgs)} train / {len(test_imgs)} test")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Prepare and split raw brain tumor dataset.")
+    parser.add_argument(
+        "--source",
+        type=Path,
+        default=project_root() / "data" / "Brain_Tumor_Dataset" / "external_data",
+        help="Source directory with class subfolders",
+    )
+    parser.add_argument(
+        "--target",
+        type=Path,
+        default=project_root() / "data" / "Brain_Tumor_Dataset" / "external_dataset",
+        help="Destination directory for splits",
+    )
+    parser.add_argument(
+        "--train-ratio",
+        type=float,
+        default=0.8,
+        help="Ratio of data for training (default: 0.8)",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Random seed (default: 42)",
+    )
+    args = parser.parse_args()
+
+    prepare_dataset(
+        source_dir=args.source,
+        target_dir=args.target,
+        train_ratio=args.train_ratio,
+        seed=args.seed,
+    )
+
+
+if __name__ == "__main__":
+    main()

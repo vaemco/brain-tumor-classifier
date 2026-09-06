@@ -1,0 +1,16 @@
+# Brain Tumor Classifier Demo - Dependencies
+# Minimal footprint for container deployment
+
+# Core
+flask>=2.0.0
+flask-cors>=4.0.0
+gunicorn>=21.0.0
+
+# ML
+torch>=2.0.0
+torchvision>=0.15.0
+pillow>=9.0.0
+numpy>=1.24.0
+
+# Explainability (optional - adds ~50MB)
+pytorch-grad-cam>=1.4.0

@@ -41,6 +41,15 @@
         </div>
 
         <div class="header-right">
+            <a href="/dashboard" class="dashboard-link">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="7" height="9"/>
+                    <rect x="14" y="3" width="7" height="5"/>
+                    <rect x="14" y="12" width="7" height="9"/>
+                    <rect x="3" y="16" width="7" height="5"/>
+                </svg>
+                <span>Dashboard</span>
+            </a>
             <button id="editModeBtn" class="edit-mode-btn">
                 <!-- Pencil Icon -->
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -220,6 +229,14 @@
                         <span>Visualization</span>
                     </div>
                     <div class="panel-controls">
+                        <button id="compareGradcamsBtn" class="compare-btn" title="Compare all GradCAMs">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="3" y="3" width="7" height="7"/>
+                                <rect x="14" y="3" width="7" height="7"/>
+                                <rect x="3" y="14" width="7" height="7"/>
+                                <rect x="14" y="14" width="7" height="7"/>
+                            </svg>
+                        </button>
                         <div class="drag-handle">
                             <svg viewBox="0 0 24 24" fill="currentColor">
                                 <circle cx="9" cy="5" r="1.5"/>
@@ -238,7 +255,8 @@
                     </div>
                 </div>
                 <div class="panel-content">
-                    <div class="image-comparison">
+                    <!-- Standard View -->
+                    <div id="standardView" class="image-comparison">
                         <!-- Original Image -->
                         <div class="image-container">
                             <img id="originalImage" alt="Original MRI">
@@ -251,11 +269,78 @@
                             <svg class="bbox-overlay" viewBox="0 0 100 100" preserveAspectRatio="none">
                                 <rect id="bboxRect" class="bbox-rect" x="0" y="0" width="0" height="0"/>
                             </svg>
-                            <span class="image-label">Grad-CAM Heatmap</span>
+                            <span class="image-label">Grad-CAM <span id="gradcamModelName"></span></span>
+                        </div>
+                    </div>
+
+                    <!-- GradCAM Comparison View (hidden by default) -->
+                    <div id="gradcamCompareView" class="gradcam-compare hidden">
+                        <div class="gradcam-grid">
+                            <div class="gradcam-item">
+                                <img id="gradcam-resnet18" alt="ResNet18 GradCAM">
+                                <div class="gradcam-label resnet">ResNet18</div>
+                                <div id="gradcam-pred-resnet18" class="gradcam-pred"></div>
+                            </div>
+                            <div class="gradcam-item">
+                                <img id="gradcam-efficientnet" alt="EfficientNet GradCAM">
+                                <div class="gradcam-label efficientnet">EfficientNet</div>
+                                <div id="gradcam-pred-efficientnet" class="gradcam-pred"></div>
+                            </div>
+                            <div class="gradcam-item">
+                                <img id="gradcam-densenet" alt="DenseNet GradCAM">
+                                <div class="gradcam-label densenet">DenseNet</div>
+                                <div id="gradcam-pred-densenet" class="gradcam-pred"></div>
+                            </div>
+                        </div>
+                        <!-- Attention Consistency Warning -->
+                        <div id="attentionConsistency" class="attention-warning hidden">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                                <line x1="12" y1="9" x2="12" y2="13"/>
+                                <line x1="12" y1="17" x2="12.01" y2="17"/>
+                            </svg>
+                            <span id="attentionText"></span>
                         </div>
                     </div>
 
                     <p id="filenameDisplay" style="margin-top: 12px; font-size: 0.8125rem; color: var(--text-muted);"></p>
+                </div>
+            </div>
+
+            <!-- ========================================
+                 CONFIDENCE CALIBRATION PANEL
+                 ======================================== -->
+            <div id="calibrationPanel" class="panel hidden" draggable="false">
+                <div class="panel-header">
+                    <div class="panel-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+                        </svg>
+                        <span>Confidence Analysis</span>
+                    </div>
+                    <div class="panel-controls">
+                        <div class="drag-handle">
+                            <svg viewBox="0 0 24 24" fill="currentColor">
+                                <circle cx="9" cy="5" r="1.5"/>
+                                <circle cx="15" cy="5" r="1.5"/>
+                                <circle cx="9" cy="12" r="1.5"/>
+                                <circle cx="15" cy="12" r="1.5"/>
+                                <circle cx="9" cy="19" r="1.5"/>
+                                <circle cx="15" cy="19" r="1.5"/>
+                            </svg>
+                        </div>
+                        <button class="collapse-btn">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="6 9 12 15 18 9"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="panel-content">
+                    <div id="calibrationContent" class="calibration-grid">
+                        <!-- Will be populated by JS -->
+                    </div>
+                    <div id="calibrationRecommendation" class="calibration-recommendation"></div>
                 </div>
             </div>
 
@@ -307,8 +392,18 @@
                         <div class="result-details">
                             <div class="final-result">
                                 <div id="resultClass" class="result-class">--</div>
-                                <div id="resultConfidence" class="result-confidence">--</div>
+                            <div id="resultConfidence" class="result-confidence">--</div>
                                 <div class="result-confidence-label">Average Confidence</div>
+                            </div>
+
+                            <!-- Auto-Evaluation Result (for Random Test) -->
+                            <div id="autoEvalResult" class="auto-eval-result hidden">
+                                <!-- Populated by JS -->
+                            </div>
+
+                            <!-- Session Statistics -->
+                            <div id="autoEvalStats" class="auto-eval-stats hidden">
+                                <!-- Populated by JS -->
                             </div>
 
                             <!-- Feedback -->

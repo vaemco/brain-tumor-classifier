@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Brain Tumor Classifier Demo</title>
+    <style>
+        :root {
+            --bg: #0d1117;
+            --card: #161b22;
+            --border: #30363d;
+            --text: #e6edf3;
+            --muted: #8b949e;
+            --accent: #58a6ff;
+            --success: #3fb950;
+            --warning: #d29922;
+            --danger: #f85149;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 1rem;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            padding: 1.5rem 0;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 1.5rem;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .subtitle {
+            color: var(--muted);
+            font-size: 0.875rem;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            background: var(--accent);
+            color: var(--bg);
+            margin-left: 0.5rem;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        @media (max-width: 768px) {
+            .grid { grid-template-columns: 1fr; }
+        }
+
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+        }
+
+        .card-title {
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* Upload Area */
+        .upload-area {
+            border: 2px dashed var(--border);
+            border-radius: 8px;
+            padding: 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .upload-area:hover, .upload-area.dragover {
+            border-color: var(--accent);
+            background: rgba(88, 166, 255, 0.05);
+        }
+
+        .upload-area input { display: none; }
+
+        .upload-icon {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+        }
+
+        /* Preview Images */
+        .image-container {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.75rem;
+        }
+
+        .image-box {
+            flex: 1;
+            aspect-ratio: 1;
+            background: var(--bg);
+            border-radius: 6px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .image-box img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+
+        .image-label {
+            font-size: 0.7rem;
+            color: var(--muted);
+            text-align: center;
+            margin-top: 0.25rem;
+        }
+
+        /* Results */
+        .result-main {
+            text-align: center;
+            padding: 1rem 0;
+        }
+
+        .prediction {
+            font-size: 1.5rem;
+            font-weight: 700;
+            text-transform: capitalize;
+            margin-bottom: 0.25rem;
+        }
+
+        .confidence {
+            font-size: 2rem;
+            font-weight: 300;
+        }
+
+        .prob-bars {
+            margin-top: 1rem;
+        }
+
+        .prob-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 0.5rem;
+            font-size: 0.8rem;
+        }
+
+        .prob-label {
+            width: 80px;
+            text-transform: capitalize;
+        }
+
+        .prob-bar {
+            flex: 1;
+            height: 8px;
+            background: var(--bg);
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 0 0.5rem;
+        }
+
+        .prob-fill {
+            height: 100%;
+            background: var(--accent);
+            transition: width 0.3s;
+        }
+
+        .prob-value {
+            width: 45px;
+            text-align: right;
+            color: var(--muted);
+        }
+
+        /* Calibration */
+        .calibration-meter {
+            height: 8px;
+            background: linear-gradient(to right, var(--success), var(--warning), var(--danger));
+            border-radius: 4px;
+            position: relative;
+            margin: 1rem 0;
+        }
+
+        .calibration-marker {
+            position: absolute;
+            top: -4px;
+            width: 4px;
+            height: 16px;
+            background: white;
+            border-radius: 2px;
+            transform: translateX(-50%);
+            transition: left 0.3s;
+        }
+
+        .calibration-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.7rem;
+            color: var(--muted);
+        }
+
+        /* Features List */
+        .features {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.5rem;
+            font-size: 0.8rem;
+        }
+
+        .feature {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .feature-icon {
+            color: var(--success);
+        }
+
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: var(--muted);
+        }
+
+        .spinner {
+            width: 24px;
+            height: 24px;
+            border: 2px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 0.5rem;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .hidden { display: none !important; }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 1.5rem 0;
+            margin-top: 1.5rem;
+            border-top: 1px solid var(--border);
+            color: var(--muted);
+            font-size: 0.75rem;
+        }
+
+        footer a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        .disclaimer {
+            background: rgba(248, 81, 73, 0.1);
+            border: 1px solid var(--danger);
+            border-radius: 6px;
+            padding: 0.75rem;
+            font-size: 0.75rem;
+            margin-top: 1rem;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🧠 Brain Tumor Classifier <span class="badge">Demo</span></h1>
+            <p class="subtitle">AI-powered MRI analysis with explainability</p>
+        </header>
+
+        <div class="grid">
+            <!-- Upload Section -->
+            <div class="card">
+                <div class="card-title">Upload MRI Scan</div>
+                <div class="upload-area" id="uploadArea">
+                    <div class="upload-icon">📁</div>
+                    <div>Drop image here or click to upload</div>
+                    <div style="font-size: 0.75rem; color: var(--muted); margin-top: 0.5rem;">
+                        Supports: JPG, PNG (max 5MB)
+                    </div>
+                    <input type="file" id="fileInput" accept="image/*">
+                </div>
+
+                <div class="image-container" id="imagePreview" style="display: none;">
+                    <div style="flex: 1;">
+                        <div class="image-box">
+                            <img id="originalImg" alt="Original">
+                        </div>
+                        <div class="image-label">Original</div>
+                    </div>
+                    <div style="flex: 1;">
+                        <div class="image-box">
+                            <img id="processedImg" alt="Processed">
+                        </div>
+                        <div class="image-label">Preprocessed</div>
+                    </div>
+                    <div style="flex: 1;" id="gradcamContainer">
+                        <div class="image-box">
+                            <img id="gradcamImg" alt="GradCAM">
+                        </div>
+                        <div class="image-label">GradCAM Focus</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Results Section -->
+            <div class="card">
+                <div class="card-title">Classification Result</div>
+
+                <div id="loadingState" class="loading hidden">
+                    <div class="spinner"></div>
+                    <div>Analyzing...</div>
+                </div>
+
+                <div id="emptyState" class="loading">
+                    <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">🔬</div>
+                    <div>Upload an MRI scan to get started</div>
+                </div>
+
+                <div id="resultState" class="hidden">
+                    <div class="result-main">
+                        <div class="prediction" id="predictionText">-</div>
+                        <div class="confidence" id="confidenceText">-</div>
+                    </div>
+
+                    <div class="prob-bars" id="probBars"></div>
+
+                    <div style="margin-top: 1rem;">
+                        <div class="card-title" style="margin-bottom: 0.5rem;">Confidence Calibration</div>
+                        <div class="calibration-meter">
+                            <div class="calibration-marker" id="entropyMarker"></div>
+                        </div>
+                        <div class="calibration-labels">
+                            <span>Certain</span>
+                            <span>Uncertain</span>
+                        </div>
+                        <div style="text-align: center; font-size: 0.75rem; color: var(--muted); margin-top: 0.5rem;">
+                            Entropy: <span id="entropyValue">-</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Features Card -->
+        <div class="card" style="margin-top: 1rem;">
+            <div class="card-title">Model Features</div>
+            <div class="features" id="featuresList">
+                <div class="feature"><span class="feature-icon">✓</span> Loading...</div>
+            </div>
+        </div>
+
+        <!-- Disclaimer -->
+        <div class="disclaimer">
+            ⚠️ <strong>For educational purposes only.</strong> Not for medical diagnosis. Always consult qualified healthcare professionals.
+        </div>
+
+        <footer>
+            Built with PyTorch & Flask |
+            <a href="https://github.com/vaemco/brain-tumor-classifier" target="_blank">View on GitHub</a>
+        </footer>
+    </div>
+
+    <script>
+        // Elements
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const imagePreview = document.getElementById('imagePreview');
+        const originalImg = document.getElementById('originalImg');
+        const processedImg = document.getElementById('processedImg');
+        const gradcamImg = document.getElementById('gradcamImg');
+        const gradcamContainer = document.getElementById('gradcamContainer');
+        const loadingState = document.getElementById('loadingState');
+        const emptyState = document.getElementById('emptyState');
+        const resultState = document.getElementById('resultState');
+        const predictionText = document.getElementById('predictionText');
+        const confidenceText = document.getElementById('confidenceText');
+        const probBars = document.getElementById('probBars');
+        const entropyMarker = document.getElementById('entropyMarker');
+        const entropyValue = document.getElementById('entropyValue');
+        const featuresList = document.getElementById('featuresList');
+
+        // Load model info
+        fetch('/api/info')
+            .then(r => r.json())
+            .then(info => {
+                featuresList.innerHTML = info.features
+                    .map(f => `<div class="feature"><span class="feature-icon">✓</span> ${f}</div>`)
+                    .join('');
+
+                if (!info.gradcam_available) {
+                    gradcamContainer.style.display = 'none';
+                }
+            })
+            .catch(() => {
+                featuresList.innerHTML = '<div class="feature">Error loading info</div>';
+            });
+
+        // Upload handling
+        uploadArea.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', handleFile);
+
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            if (e.dataTransfer.files.length) {
+                fileInput.files = e.dataTransfer.files;
+                handleFile();
+            }
+        });
+
+        function handleFile() {
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            // Show original image
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                originalImg.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+
+            // Show loading
+            imagePreview.style.display = 'flex';
+            emptyState.classList.add('hidden');
+            loadingState.classList.remove('hidden');
+            resultState.classList.add('hidden');
+
+            // Upload and predict
+            const formData = new FormData();
+            formData.append('file', file);
+
+            fetch('/api/predict', {
+                method: 'POST',
+                body: formData
+            })
+            .then(r => r.json())
+            .then(showResult)
+            .catch(err => {
+                loadingState.classList.add('hidden');
+                alert('Error: ' + err.message);
+            });
+        }
+
+        function showResult(data) {
+            loadingState.classList.add('hidden');
+            resultState.classList.remove('hidden');
+
+            // Main prediction
+            predictionText.textContent = data.prediction;
+            confidenceText.textContent = (data.confidence * 100).toFixed(1) + '%';
+
+            // Confidence color
+            const conf = data.confidence;
+            predictionText.style.color = conf > 0.8 ? 'var(--success)' : conf > 0.5 ? 'var(--warning)' : 'var(--danger)';
+
+            // Processed image
+            if (data.preprocessed_image) {
+                processedImg.src = 'data:image/png;base64,' + data.preprocessed_image;
+            }
+
+            // GradCAM
+            if (data.gradcam) {
+                gradcamImg.src = 'data:image/png;base64,' + data.gradcam;
+                gradcamContainer.style.display = 'block';
+            }
+
+            // Probability bars
+            probBars.innerHTML = Object.entries(data.probabilities)
+                .sort((a, b) => b[1] - a[1])
+                .map(([cls, prob]) => `
+                    <div class="prob-row">
+                        <span class="prob-label">${cls}</span>
+                        <div class="prob-bar">
+                            <div class="prob-fill" style="width: ${prob * 100}%"></div>
+                        </div>
+                        <span class="prob-value">${(prob * 100).toFixed(1)}%</span>
+                    </div>
+                `).join('');
+
+            // Entropy marker
+            entropyMarker.style.left = (data.entropy * 100) + '%';
+            entropyValue.textContent = data.entropy.toFixed(3);
+        }
+    </script>
+</body>
+</html>

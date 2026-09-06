@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  brain-tumor-demo:
+    build: .
+    container_name: brain-tumor-classifier
+    ports:
+      - "5000:5000"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G  # Limit to 1GB RAM
+        reservations:
+          memory: 512M
+    environment:
+      - PYTORCH_NO_CUDA_MEMORY_CACHING=1
+      - OMP_NUM_THREADS=1
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s

@@ -3,7 +3,6 @@ Path helpers used across scripts, notebooks, and the web app.
 """
 
 from pathlib import Path
-from typing import Optional, Tuple
 
 
 def project_root() -> Path:
@@ -13,7 +12,7 @@ def project_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-def get_data_dirs(root: Optional[Path] = None) -> Tuple[Path, Path]:
+def get_data_dirs(root: Path | None = None) -> tuple[Path, Path]:
     """
     Returns (primary_training_dir, external_training_dir).
     """
@@ -24,11 +23,11 @@ def get_data_dirs(root: Optional[Path] = None) -> Tuple[Path, Path]:
     return primary, external
 
 
-def get_models_dir(root: Optional[Path] = None) -> Path:
+def get_models_dir(root: Path | None = None) -> Path:
     root = root or project_root()
     return root / "models"
 
 
-def get_runs_dir(root: Optional[Path] = None) -> Path:
+def get_runs_dir(root: Path | None = None) -> Path:
     root = root or project_root()
     return root / "runs"

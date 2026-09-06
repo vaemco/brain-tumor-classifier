@@ -1,34 +1,21 @@
 """
-Training Script for Brain Tumor Classifier (ResNet18)
-=====================================================
+Training Script for Brain Tumor Classifier (ResNet18).
 
-This script handles the training of the PyTorch model.
-It uses Transfer Learning with a pre-trained ResNet18 architecture.
-
-Key Features:
-- Data Augmentation: Random rotations, flips, blur, and noise to prevent overfitting.
-- Transfer Learning: Freezes early layers and only trains the later layers (Fine-Tuning).
-- Early Stopping: Stops training if validation loss doesn't improve for `patience` epochs.
-- Metrics: Saves loss and accuracy history to `runs/metrics_v2.json`.
-
-How to Modify:
-- Hyperparameters: Adjust `epochs`, `batch_size` (in DataLoader), or `lr` (learning rate) in the Optimizer section.
-- Model: Change `models.resnet18` to another architecture (e.g., `models.efficientnet_b0`) if needed.
-- Augmentation: Modify `train_tf` to add/remove transformations.
+Transfer learning with fine-tuning, validation early stopping, and metric tracking.
 """
 
-import os
-import sys
+import argparse
 from copy import deepcopy
+import json
+import logging
 from pathlib import Path
-
+import sys
 import numpy as np
 import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import ConcatDataset, DataLoader, random_split
+from torch import nn, optim
+from torch.utils.data import ConcatDataset, DataLoader, SubsetRandomSampler
+from torchvision import datasets
 import yaml
-from torchvision import datasets, models
 
 # Allow importing shared utilities from src/
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -36,252 +23,313 @@ SRC_DIR = BASE_DIR / "src"
 if SRC_DIR.exists() and str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from brain_tumor.paths import get_data_dirs  # noqa: E402
-from brain_tumor.transforms import (  # noqa: E402
-    build_train_transforms,
-    build_val_transforms,
-)
+from brain_tumor.device import get_device  # noqa: E402
+from brain_tumor.model_factory import create_model  # noqa: E402
+from brain_tumor.paths import get_data_dirs, get_models_dir, get_runs_dir, project_root  # noqa: E402
+from brain_tumor.transforms import build_train_transforms, build_val_transforms  # noqa: E402
 
-CONFIG_PATH = BASE_DIR / "configs" / "train.yaml"
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
 
 
 def load_config(path: Path) -> dict:
     if path.exists():
-        with open(path, "r") as f:
+        with open(path, "r", encoding="utf-8") as f:
             return yaml.safe_load(f) or {}
     return {}
 
-# --- Device Configuration ---
-# Automatically detects MPS (Mac), CUDA (NVIDIA), or CPU.
-if torch.backends.mps.is_available():
-    device = torch.device("mps")
-    print("Using device: MPS (Apple Silicon GPU)")
-elif torch.cuda.is_available():
-    device = torch.device("cuda")
-    print("Using device: CUDA")
-else:
-    device = torch.device("cpu")
-    print("Using device: CPU")
 
-print(f"PyTorch version: {torch.__version__}")
+def train_model(
+    data_dir: Path,
+    external_data_dir: Path | None = None,
+    output_dir: Path | None = None,
+    models_dir: Path | None = None,
+    model_name: str = "resnet18",
+    batch_size: int = 32,
+    epochs: int = 30,
+    patience: int = 5,
+    layer_lr: float = 3e-4,
+    fc_lr: float = 1e-3,
+    weight_decay: float = 1e-4,
+    val_split: float = 0.2,
+    seed: int = 42,
+) -> dict[str, list[float]]:
+    """
+    Train a brain tumor classification model with transfer learning and early stopping.
+    """
+    root = project_root()
+    output_dir = output_dir or get_runs_dir(root)
+    models_dir = models_dir or get_models_dir(root)
 
-# Data Paths
-# Define paths relative to the script
-base_dir = BASE_DIR
-config = load_config(CONFIG_PATH)
-data_dir_default, external_data_dir_default = get_data_dirs(base_dir)
-data_dir = Path(config.get("data_dir") or data_dir_default)
-external_data_dir = Path(config.get("external_data_dir") or external_data_dir_default)
-batch_size = int(config.get("batch_size", 32))
-epochs = int(config.get("epochs", 30))
-patience = int(config.get("patience", 5))
-layer_lr = float(config.get("layer_lr", 3e-4))
-fc_lr = float(config.get("fc_lr", 1e-3))
-weight_decay = float(config.get("weight_decay", 1e-4))
+    output_dir.mkdir(parents=True, exist_ok=True)
+    models_dir.mkdir(parents=True, exist_ok=True)
 
-print(f"Main Data Dir: {data_dir}")
-print(f"External Data Dir: {external_data_dir}")
+    metrics_file = output_dir / "metrics_v2.json"
+    model_save_path = models_dir / f"brain_tumor_{model_name}_v2_trained.pt"
 
+    device = get_device()
+    logger.info(f"Using device: {device}")
+    logger.info(f"PyTorch version: {torch.__version__}")
 
-# --- Data Augmentation (Crucial for Generalization) ---
-# These transformations are applied to every training image on the fly.
-# They help the model learn to recognize tumors even if the image is rotated, blurry, or has different lighting.
-train_tf = build_train_transforms()
+    train_tf = build_train_transforms()
+    val_tf = build_val_transforms()
 
-# Validation transforms: No augmentation, just resizing and normalization.
-# We want to evaluate on clean, standard images.
-val_tf = build_val_transforms()
+    logger.info(f"Loading primary dataset from {data_dir}...")
+    dataset_primary_train = datasets.ImageFolder(root=str(data_dir), transform=train_tf)
+    dataset_primary_val = datasets.ImageFolder(root=str(data_dir), transform=val_tf)
 
-# Load Datasets
-print("Loading datasets...")
-dataset1 = datasets.ImageFolder(root=data_dir, transform=train_tf)
-print(f"Original dataset: {len(dataset1)} samples")
+    train_datasets = [dataset_primary_train]
+    val_datasets = [dataset_primary_val]
 
-try:
-    dataset2 = datasets.ImageFolder(root=external_data_dir, transform=train_tf)
-    print(f"External dataset: {len(dataset2)} samples")
-    full_dataset = ConcatDataset([dataset1, dataset2])
-except Exception as e:
-    print(f"Could not load external dataset: {e}")
-    full_dataset = dataset1
+    if external_data_dir and external_data_dir.exists():
+        try:
+            ext_train = datasets.ImageFolder(root=str(external_data_dir), transform=train_tf)
+            ext_val = datasets.ImageFolder(root=str(external_data_dir), transform=val_tf)
+            train_datasets.append(ext_train)
+            val_datasets.append(ext_val)
+            logger.info(f"Loaded external dataset from {external_data_dir} ({len(ext_train)} samples)")
+        except (FileNotFoundError, RuntimeError) as exc:
+            logger.warning(f"Could not load external dataset from {external_data_dir}: {exc}")
 
-class_names = dataset1.classes
-print("Classes:", class_names)
-print("Total training samples:", len(full_dataset))
+    full_train_dataset = ConcatDataset(train_datasets)
+    full_val_dataset = ConcatDataset(val_datasets)
 
-# Split 80/20
-val_size = int(0.2 * len(full_dataset))
-train_size = len(full_dataset) - val_size
-train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size])
+    total_samples = len(full_train_dataset)
+    class_names = dataset_primary_train.classes
+    num_classes = len(class_names)
+    logger.info(f"Classes ({num_classes}): {class_names}")
+    logger.info(f"Total dataset samples: {total_samples}")
 
-# Override validation transform (hacky but works for random_split subsets if we iterate)
-# Since random_split returns Subset, we can't easily set transform per subset.
-# Better approach: Apply transforms in the loop or use a custom wrapper.
-# For simplicity here, we'll assume the transform is applied at access time.
-# But wait, ImageFolder applies transform at __getitem__.
-# So train_dataset has train_tf. val_dataset ALSO has train_tf.
-# We need to fix this.
+    rng = np.random.default_rng(seed)
+    indices = np.arange(total_samples)
+    rng.shuffle(indices)
 
+    split_idx = int(np.floor(val_split * total_samples))
+    val_indices = indices[:split_idx]
+    train_indices = indices[split_idx:]
 
-class TransformedSubset(torch.utils.data.Dataset):
-    def __init__(self, subset, transform=None):
-        self.subset = subset
-        self.transform = transform
+    train_sampler = SubsetRandomSampler(train_indices)
+    val_sampler = SubsetRandomSampler(val_indices)
 
-    def __getitem__(self, index):
-        x, y = self.subset[index]
-        if self.transform:
-            # We need to get the original PIL image, not the transformed tensor
-            # This is tricky with ImageFolder + random_split
-            # Re-loading the image is slow.
-            # Alternative: Load dataset twice.
-            pass
-        return x, y
-
-    def __len__(self):
-        return len(self.subset)
-
-
-# Better approach: Load dataset twice
-dataset1_train = datasets.ImageFolder(root=data_dir, transform=train_tf)
-dataset1_val = datasets.ImageFolder(root=data_dir, transform=val_tf)
-
-try:
-    dataset2_train = datasets.ImageFolder(root=external_data_dir, transform=train_tf)
-    dataset2_val = datasets.ImageFolder(root=external_data_dir, transform=val_tf)
-
-    full_train = ConcatDataset([dataset1_train, dataset2_train])
-    full_val = ConcatDataset([dataset1_val, dataset2_val])
-except:
-    full_train = dataset1_train
-    full_val = dataset1_val
-
-# Create indices
-indices = list(range(len(full_train)))
-np.random.shuffle(indices)
-split = int(np.floor(0.2 * len(full_train)))
-train_idx, val_idx = indices[split:], indices[:split]
-
-train_sampler = torch.utils.data.SubsetRandomSampler(train_idx)
-val_sampler = torch.utils.data.SubsetRandomSampler(val_idx)
-
-train_loader = DataLoader(
-    full_train, batch_size=batch_size, sampler=train_sampler, num_workers=0
-)
-val_loader = DataLoader(
-    full_val, batch_size=batch_size, sampler=val_sampler, num_workers=0
-)
-
-print(f"Training batches: {len(train_loader)}")
-print(f"Validation batches: {len(val_loader)}")
-
-# Model Setup
-num_classes = len(class_names)
-base = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
-base.fc = nn.Linear(base.fc.in_features, num_classes)
-
-# Freeze/Unfreeze
-for p in base.parameters():
-    p.requires_grad = False
-for name, p in base.named_parameters():
-    if name.startswith("layer3") or name.startswith("layer4") or name.startswith("fc"):
-        p.requires_grad = True
-
-model = base.to(device)
-
-# Optimizer
-params = [
-    {
-        "params": [
-            p
-            for n, p in model.named_parameters()
-            if p.requires_grad and (n.startswith("layer3") or n.startswith("layer4"))
-        ],
-        "lr": layer_lr,
-    },
-    {"params": model.fc.parameters(), "lr": fc_lr},
-]
-optimizer = optim.Adam(params, weight_decay=weight_decay)
-criterion = nn.CrossEntropyLoss()
-
-print("Model ready for training on", device)
-
-# Training Loop
-best_val = float("inf")
-bad = 0
-history = {"train_loss": [], "val_loss": [], "train_acc": [], "val_acc": []}
-
-print(
-    f"Hyperparameters -> epochs: {epochs}, batch_size: {batch_size}, "
-    f"layer_lr: {layer_lr}, fc_lr: {fc_lr}, weight_decay: {weight_decay}, patience: {patience}"
-)
-
-output_dir = base_dir / "runs"
-model_dir = base_dir / "models"
-os.makedirs(output_dir, exist_ok=True)
-os.makedirs(model_dir, exist_ok=True)
-
-metrics_file = os.path.join(output_dir, "metrics_v2.json")
-model_save_path = os.path.join(model_dir, "brain_tumor_resnet18_v2_trained.pt")
-
-print("Starting training...")
-
-for epoch in range(epochs):
-    # --- Training ---
-    model.train()
-    tl, tc, tt = 0.0, 0, 0
-    for batch_idx, (x, y) in enumerate(train_loader):
-        x, y = x.to(device), y.to(device)
-        optimizer.zero_grad()
-
-        out = model(x)
-        loss = criterion(out, y)
-        loss.backward()
-        optimizer.step()
-
-        tl += loss.item() * x.size(0)
-        tc += (out.argmax(1) == y).sum().item()
-        tt += y.size(0)
-
-    train_loss = tl / tt
-    train_acc = 100 * tc / tt
-
-    # --- Validation ---
-    model.eval()
-    vl, vc, vt = 0.0, 0, 0
-    with torch.no_grad():
-        for x, y in val_loader:
-            x, y = x.to(device), y.to(device)
-            out = model(x)
-            loss = criterion(out, y)
-            vl += loss.item() * x.size(0)
-            vc += (out.argmax(1) == y).sum().item()
-            vt += y.size(0)
-
-    val_loss = vl / vt
-    val_acc = 100 * vc / vt
-
-    # Save history
-    history["train_loss"].append(train_loss)
-    history["val_loss"].append(val_loss)
-    history["train_acc"].append(train_acc)
-    history["val_acc"].append(val_acc)
-
-    print(
-        f"Epoch {epoch + 1:02d} | Train {train_loss:.4f}, Acc {train_acc:.2f}% | Val {val_loss:.4f}, Acc {val_acc:.2f}%"
+    train_loader = DataLoader(
+        full_train_dataset,
+        batch_size=batch_size,
+        sampler=train_sampler,
+        num_workers=0,
+    )
+    val_loader = DataLoader(
+        full_val_dataset,
+        batch_size=batch_size,
+        sampler=val_sampler,
+        num_workers=0,
     )
 
-    # Early Stopping
-    if val_loss < best_val:
-        best_val = val_loss
-        best_state = deepcopy(model.state_dict())
-        torch.save(best_state, model_save_path)
-        print(f"  → Model saved to {model_save_path}")
-        bad = 0
-    else:
-        bad += 1
-        if bad >= patience:
-            print("Early stopping.")
-            break
+    logger.info(f"Training batches: {len(train_loader)} | Validation batches: {len(val_loader)}")
 
-print("\nTraining complete!")
+    model = create_model(model_name=model_name, num_classes=num_classes, pretrained=True)
+
+    # Freeze earlier layers, fine-tune higher representation layers and head
+    for param in model.parameters():
+        param.requires_grad = False
+
+    fine_tune_params: list[nn.Parameter] = []
+    head_params: list[nn.Parameter] = []
+
+    if model_name == "resnet18":
+        for name, param in model.named_parameters():
+            if name.startswith("layer3") or name.startswith("layer4"):
+                param.requires_grad = True
+                fine_tune_params.append(param)
+            elif name.startswith("fc"):
+                param.requires_grad = True
+                head_params.append(param)
+    else:
+        # Generic fine-tuning for other architectures
+        for name, param in model.named_parameters():
+            if "classifier" in name or "fc" in name:
+                param.requires_grad = True
+                head_params.append(param)
+            else:
+                param.requires_grad = True
+                fine_tune_params.append(param)
+
+    optimizer = optim.Adam(
+        [
+            {"params": fine_tune_params, "lr": layer_lr},
+            {"params": head_params, "lr": fc_lr},
+        ],
+        weight_decay=weight_decay,
+    )
+    criterion = nn.CrossEntropyLoss()
+    model.to(device)
+
+    best_val_loss = float("inf")
+    epochs_without_improvement = 0
+    history: dict[str, list[float]] = {
+        "train_loss": [],
+        "val_loss": [],
+        "train_acc": [],
+        "val_acc": [],
+    }
+
+    logger.info("Starting training loop...")
+    for epoch in range(epochs):
+        model.train()
+        train_loss_sum = 0.0
+        train_correct = 0
+        train_total = 0
+
+        for images, labels in train_loader:
+            images = images.to(device)
+            labels = labels.to(device)
+
+            optimizer.zero_grad()
+            outputs = model(images)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
+
+            batch_len = images.size(0)
+            train_loss_sum += loss.item() * batch_len
+            train_correct += int((outputs.argmax(1) == labels).sum().item())
+            train_total += batch_len
+
+        epoch_train_loss = train_loss_sum / train_total
+        epoch_train_acc = 100.0 * train_correct / train_total
+
+        model.eval()
+        val_loss_sum = 0.0
+        val_correct = 0
+        val_total = 0
+
+        with torch.no_grad():
+            for images, labels in val_loader:
+                images = images.to(device)
+                labels = labels.to(device)
+                outputs = model(images)
+                loss = criterion(outputs, labels)
+
+                batch_len = images.size(0)
+                val_loss_sum += loss.item() * batch_len
+                val_correct += int((outputs.argmax(1) == labels).sum().item())
+                val_total += batch_len
+
+        epoch_val_loss = val_loss_sum / val_total
+        epoch_val_acc = 100.0 * val_correct / val_total
+
+        history["train_loss"].append(epoch_train_loss)
+        history["val_loss"].append(epoch_val_loss)
+        history["train_acc"].append(epoch_train_acc)
+        history["val_acc"].append(epoch_val_acc)
+
+        logger.info(
+            f"Epoch {epoch + 1:02d}/{epochs:02d} | "
+            f"Train Loss: {epoch_train_loss:.4f}, Acc: {epoch_train_acc:.2f}% | "
+            f"Val Loss: {epoch_val_loss:.4f}, Acc: {epoch_val_acc:.2f}%"
+        )
+
+        if epoch_val_loss < best_val_loss:
+            best_val_loss = epoch_val_loss
+            epochs_without_improvement = 0
+            best_state = deepcopy(model.state_dict())
+            torch.save(best_state, model_save_path)
+            logger.info(f"Model saved to {model_save_path}")
+        else:
+            epochs_without_improvement += 1
+            if epochs_without_improvement >= patience:
+                logger.info(f"Early stopping triggered after {epoch + 1} epochs.")
+                break
+
+    with open(metrics_file, "w", encoding="utf-8") as f:
+        json.dump(history, f, indent=2)
+    logger.info(f"Training metrics saved to {metrics_file}")
+
+    return history
+
+
+def main() -> None:
+    root = project_root()
+    default_data_dir, default_ext_dir = get_data_dirs(root)
+    config_path = root / "configs" / "train.yaml"
+    config = load_config(config_path)
+
+    parser = argparse.ArgumentParser(description="Train brain tumor classifier.")
+    parser.add_argument(
+        "--model-name",
+        type=str,
+        default=config.get("model_name", "resnet18"),
+        choices=["resnet18", "efficientnet", "densenet"],
+        help="Architecture name",
+    )
+    parser.add_argument(
+        "--data-dir",
+        type=Path,
+        default=Path(config.get("data_dir") or default_data_dir),
+        help="Primary training dataset directory",
+    )
+    parser.add_argument(
+        "--external-data-dir",
+        type=Path,
+        default=Path(config.get("external_data_dir") or default_ext_dir),
+        help="Optional external training dataset directory",
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=int(config.get("batch_size", 32)),
+        help="Batch size",
+    )
+    parser.add_argument(
+        "--epochs",
+        type=int,
+        default=int(config.get("epochs", 30)),
+        help="Maximum training epochs",
+    )
+    parser.add_argument(
+        "--patience",
+        type=int,
+        default=int(config.get("patience", 5)),
+        help="Early stopping patience",
+    )
+    parser.add_argument(
+        "--layer-lr",
+        type=float,
+        default=float(config.get("layer_lr", 3e-4)),
+        help="Learning rate for fine-tuned layers",
+    )
+    parser.add_argument(
+        "--fc-lr",
+        type=float,
+        default=float(config.get("fc_lr", 1e-3)),
+        help="Learning rate for classification head",
+    )
+    parser.add_argument(
+        "--weight-decay",
+        type=float,
+        default=float(config.get("weight_decay", 1e-4)),
+        help="Weight decay parameter",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Random seed for data split reproducibility",
+    )
+    args = parser.parse_args()
+
+    train_model(
+        data_dir=args.data_dir,
+        external_data_dir=args.external_data_dir,
+        model_name=args.model_name,
+        batch_size=args.batch_size,
+        epochs=args.epochs,
+        patience=args.patience,
+        layer_lr=args.layer_lr,
+        fc_lr=args.fc_lr,
+        weight_decay=args.weight_decay,
+        seed=args.seed,
+    )
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "brain-tumor"
+version = "0.1.0"
+description = "Deep learning pipeline and web application for brain tumor classification"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "torch",
+    "torchvision",
+    "numpy",
+    "pillow",
+    "scikit-learn",
+    "matplotlib",
+    "flask",
+    "flask-cors",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

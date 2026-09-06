@@ -1,32 +1,21 @@
 """
-Evaluation Script
-=================
+Evaluation Script.
 
-This script evaluates the trained model on an external test dataset.
-It calculates accuracy, generates a confusion matrix, and saves misclassified images for analysis.
-
-Key Features:
-- Accuracy & Classification Report: Precision, Recall, F1-Score per class.
-- Confusion Matrix: Visualizes where the model makes mistakes (e.g., confusing Glioma with Meningioma).
-- Misclassified Analysis: Saves images that were predicted incorrectly into a `misclassified/` folder,
-  organized by `TrueLabel_as_PredictedLabel`. This is crucial for debugging model errors.
-
-How to Modify:
-- Dataset: Change `DATA_DIR` to point to a different test set.
-- Model: Change `MODEL_PATH` to evaluate a different checkpoint.
+Evaluates a trained checkpoint on a test dataset, calculates classification metrics,
+generates a confusion matrix, and exports misclassified samples for error analysis.
 """
 
+import argparse
+import logging
+from pathlib import Path
 import shutil
 import sys
-from pathlib import Path
-
 import matplotlib.pyplot as plt
 import seaborn as sns
 import torch
-import torch.nn as nn
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from torch.utils.data import DataLoader
-from torchvision import datasets, models
+from torchvision import datasets
 
 # Allow importing shared utilities from src/
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -34,127 +23,202 @@ SRC_DIR = BASE_DIR / "src"
 if SRC_DIR.exists() and str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from brain_tumor.paths import get_data_dirs, get_models_dir  # noqa: E402
+from brain_tumor.device import get_device  # noqa: E402
+from brain_tumor.model_factory import create_model  # noqa: E402
+from brain_tumor.paths import get_data_dirs, get_models_dir, get_runs_dir, project_root  # noqa: E402
 from brain_tumor.transforms import build_val_transforms  # noqa: E402
 
-# Configuration
-_, DATA_DIR = get_data_dirs(BASE_DIR)
-MODEL_DIR = get_models_dir(BASE_DIR)
-MODEL_PATH = MODEL_DIR / "brain_tumor_resnet18_v2_trained.pt"
-if not MODEL_PATH.exists():
-    print(f"Model {MODEL_PATH} not found, falling back to old naming")
-    MODEL_PATH = MODEL_DIR / "brain_tumor_resnet18_v2.pt"
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
 
-MISCLASSIFIED_DIR = BASE_DIR / "misclassified"
-BATCH_SIZE = 32
 
-# Device
-if torch.backends.mps.is_available():
-    device = torch.device("mps")
-elif torch.cuda.is_available():
-    device = torch.device("cuda")
-else:
-    device = torch.device("cpu")
+def evaluate_model(
+    model_path: Path,
+    data_dir: Path,
+    output_dir: Path,
+    model_name: str = "resnet18",
+    batch_size: int = 32,
+) -> float:
+    """
+    Run evaluation on the specified dataset and checkpoint.
 
-print(f"Using device: {device}")
+    Args:
+        model_path: Path to the .pt model weights
+        data_dir: Directory containing class subfolders of evaluation images
+        output_dir: Destination for plots and misclassified images
+        model_name: Model architecture family ('resnet18', 'efficientnet', 'densenet')
+        batch_size: Evaluation batch size
 
-# Transforms (Validation only)
-val_tf = build_val_transforms()
+    Returns:
+        Accuracy score as float
+    """
+    device = get_device()
+    logger.info(f"Using device: {device}")
 
-# Load Data
-print("Loading external dataset...")
-try:
-    dataset = datasets.ImageFolder(root=DATA_DIR, transform=val_tf)
-    loader = DataLoader(dataset, batch_size=32, shuffle=False)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    misclassified_dir = output_dir / "misclassified"
+
+    val_tf = build_val_transforms()
+
+    logger.info(f"Loading evaluation dataset from {data_dir}...")
+    try:
+        dataset = datasets.ImageFolder(root=str(data_dir), transform=val_tf)
+    except Exception as exc:
+        logger.error(f"Failed to load dataset from {data_dir}: {exc}")
+        raise
+
+    loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
     class_names = dataset.classes
-    print(f"Classes: {class_names}")
-    print(f"Samples: {len(dataset)}")
-except Exception as e:
-    print(f"Error loading dataset: {e}")
-    exit(1)
+    logger.info(f"Classes ({len(class_names)}): {class_names}")
+    logger.info(f"Total evaluation samples: {len(dataset)}")
 
-# Load Model
-print(f"Loading model from {MODEL_PATH}...")
-model = models.resnet18(weights=None)
-model.fc = nn.Linear(model.fc.in_features, len(class_names))
-try:
-    model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
-except:
-    # Try loading with weights_only=True or False depending on pytorch version/warning
-    model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
+    logger.info(f"Loading {model_name} model from {model_path}...")
+    model = create_model(model_name=model_name, num_classes=len(class_names), pretrained=False)
 
-model = model.to(device)
-model.eval()
+    try:
+        state_dict = torch.load(model_path, map_location=device, weights_only=True)
+    except Exception:
+        state_dict = torch.load(model_path, map_location=device, weights_only=False)
 
-# Evaluation
-all_preds = []
-all_labels = []
-misclassified = []
+    model.load_state_dict(state_dict)
+    model.to(device)
+    model.eval()
 
-print("Running evaluation...")
-with torch.no_grad():
-    for i, (x, y) in enumerate(loader):
-        x = x.to(device)
-        outputs = model(x)
-        _, preds = torch.max(outputs, 1)
+    all_preds: list[int] = []
+    all_labels: list[int] = []
+    misclassified: list[dict[str, str]] = []
 
-        all_preds.extend(preds.cpu().numpy())
-        all_labels.extend(y.numpy())
+    logger.info("Running evaluation...")
+    with torch.no_grad():
+        for batch_idx, (images, labels) in enumerate(loader):
+            images = images.to(device)
+            outputs = model(images)
+            _, preds = torch.max(outputs, 1)
 
-        # Track misclassifications
-        # We need original indices to get filenames.
-        # ImageFolder preserves order if shuffle=False.
-        start_idx = i * 32
-        for j in range(len(preds)):
-            if preds[j] != y[j]:
-                idx = start_idx + j
-                path, _ = dataset.samples[idx]
-                misclassified.append(
-                    {
-                        "path": path,
-                        "true_label": class_names[y[j]],
-                        "pred_label": class_names[preds[j]],
-                    }
-                )
+            preds_cpu = preds.cpu().tolist()
+            labels_list = labels.tolist()
 
-# Metrics
-acc = accuracy_score(all_labels, all_preds)
-print(f"\nAccuracy: {acc:.4f}")
+            all_preds.extend(preds_cpu)
+            all_labels.extend(labels_list)
 
-print("\nClassification Report:")
-print(classification_report(all_labels, all_preds, target_names=class_names))
+            start_idx = batch_idx * batch_size
+            for offset, (pred_val, true_val) in enumerate(zip(preds_cpu, labels_list)):
+                if pred_val != true_val:
+                    sample_path, _ = dataset.samples[start_idx + offset]
+                    misclassified.append(
+                        {
+                            "path": sample_path,
+                            "true_label": class_names[true_val],
+                            "pred_label": class_names[pred_val],
+                        }
+                    )
 
-cm = confusion_matrix(all_labels, all_preds)
-plt.figure(figsize=(8, 6))
-sns.heatmap(
-    cm,
-    annot=True,
-    fmt="d",
-    cmap="Blues",
-    xticklabels=class_names,
-    yticklabels=class_names,
-)
-plt.xlabel("Predicted")
-plt.ylabel("True")
-plt.title("Confusion Matrix")
-plt.savefig("confusion_matrix_external.png")
-print("Confusion matrix saved to confusion_matrix_external.png")
+    acc = float(accuracy_score(all_labels, all_preds))
+    logger.info(f"Accuracy: {acc:.4f}")
+    logger.info("\n" + classification_report(all_labels, all_preds, target_names=class_names))
 
-# Save Misclassified
-print(f"\nSaving {len(misclassified)} misclassified images...")
-if MISCLASSIFIED_DIR.exists():
-    shutil.rmtree(MISCLASSIFIED_DIR)
-MISCLASSIFIED_DIR.mkdir()
+    cm = confusion_matrix(all_labels, all_preds)
+    plt.figure(figsize=(8, 6))
+    sns.heatmap(
+        cm,
+        annot=True,
+        fmt="d",
+        cmap="Blues",
+        xticklabels=class_names,
+        yticklabels=class_names,
+    )
+    plt.xlabel("Predicted")
+    plt.ylabel("True")
+    plt.title(f"Confusion Matrix ({model_name})")
 
-for item in misclassified:
-    # Create subfolder: true_as_pred
-    folder_name = f"{item['true_label']}_as_{item['pred_label']}"
-    target_dir = MISCLASSIFIED_DIR / folder_name
-    target_dir.mkdir(parents=True, exist_ok=True)
+    cm_path = output_dir / f"confusion_matrix_{model_name}.png"
+    plt.savefig(cm_path, bbox_inches="tight")
+    plt.close()
+    logger.info(f"Confusion matrix saved to {cm_path}")
 
-    # Copy file
-    src = Path(item["path"])
-    dst = target_dir / src.name
-    shutil.copy2(src, dst)
+    if misclassified_dir.exists():
+        shutil.rmtree(misclassified_dir)
+    misclassified_dir.mkdir(parents=True, exist_ok=True)
 
-print(f"Misclassified images saved to {MISCLASSIFIED_DIR}")
+    for item in misclassified:
+        folder_name = f"{item['true_label']}_as_{item['pred_label']}"
+        target_subfolder = misclassified_dir / folder_name
+        target_subfolder.mkdir(parents=True, exist_ok=True)
+
+        src_file = Path(item["path"])
+        shutil.copy2(src_file, target_subfolder / src_file.name)
+
+    logger.info(f"Saved {len(misclassified)} misclassified images to {misclassified_dir}")
+    return acc
+
+
+def main() -> None:
+    root = project_root()
+    _, default_data_dir = get_data_dirs(root)
+    default_models_dir = get_models_dir(root)
+    default_runs_dir = get_runs_dir(root)
+
+    parser = argparse.ArgumentParser(description="Evaluate brain tumor classification model.")
+    parser.add_argument(
+        "--model-name",
+        type=str,
+        default="resnet18",
+        choices=["resnet18", "efficientnet", "densenet"],
+        help="Model architecture family",
+    )
+    parser.add_argument(
+        "--model-path",
+        type=Path,
+        default=None,
+        help="Path to checkpoint file (defaults to models/brain_tumor_<model_name>_v2_trained.pt)",
+    )
+    parser.add_argument(
+        "--data-dir",
+        type=Path,
+        default=default_data_dir,
+        help="Path to test dataset directory",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=default_runs_dir / "evaluation",
+        help="Directory to save evaluation plots and misclassified images",
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=32,
+        help="Batch size for evaluation",
+    )
+    args = parser.parse_args()
+
+    model_path = args.model_path
+    if model_path is None:
+        candidate_names = [
+            f"brain_tumor_{args.model_name}_b0_v2_trained.pt",
+            f"brain_tumor_{args.model_name}_v2_trained.pt",
+            f"brain_tumor_{args.model_name}_v2.pt",
+        ]
+        for name in candidate_names:
+            p = default_models_dir / name
+            if p.exists():
+                model_path = p
+                break
+        if model_path is None:
+            model_path = default_models_dir / candidate_names[1]
+
+    if not model_path.exists():
+        logger.error(f"Checkpoint not found at: {model_path}")
+        sys.exit(1)
+
+    evaluate_model(
+        model_path=model_path,
+        data_dir=args.data_dir,
+        output_dir=args.output_dir,
+        model_name=args.model_name,
+        batch_size=args.batch_size,
+    )
+
+
+if __name__ == "__main__":
+    main()
